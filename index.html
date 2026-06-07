@@ -189,6 +189,7 @@ function buildApp() {
     ${state.tab==="resumen"  ? buildResumen()   : ""}
     ${state.showCats         ? buildModalCats() : ""}
     ${state.plantillaEnUso   ? buildModalPlantilla() : ""}
+    ${state.gastoEditando    ? buildModalEditarGasto() : ""}
   `;
 }
 
@@ -250,6 +251,42 @@ function buildSplitEditor(parts, updateFn, addFn, eqFn) {
       <span style="font-family:monospace;font-size:12px;color:${total===100?"#34D399":"#EF4444"}">Total: ${total}%</span>
     </div>
     <button onclick="${eqFn}()" style="margin-top:8px;background:none;border:none;color:var(--muted);font-size:12px;text-decoration:underline">Partes iguales</button>`;
+}
+
+function buildModalEditarGasto() {
+  const g = state.gastoEditando;
+  const partesMedio = (g.medio||"").split(" · ");
+  const m = state._editMedio !== undefined ? state._editMedio : (partesMedio[0]||null);
+  const sm = state._editSubMedio !== undefined ? state._editSubMedio : (partesMedio[1]||null);
+  const eDesc = state._editDesc !== undefined ? state._editDesc : (g.desc||"");
+  const eMonto = state._editMonto !== undefined ? state._editMonto : (g.monto||"");
+  const eMoneda = state._editMoneda !== undefined ? state._editMoneda : (g.moneda||"ARS");
+  const eFecha = state._editFecha !== undefined ? state._editFecha : (g.fecha||hoy());
+  const eCat = state._editCat !== undefined ? state._editCat : (g.categoria||"");
+  const eNota = state._editNota !== undefined ? state._editNota : (g.nota||"");
+  const eEmp = state._editEmpresa !== undefined ? state._editEmpresa : (g.empresa||null);
+  const monOpts = ["ARS","U$S","Euros","CLP"].map(mo=>`<option${eMoneda===mo?" selected":""}>${mo}</option>`).join("");
+  const catOpts = state.categorias.map(c=>`<option${eCat===c?" selected":""}>${c}</option>`).join("");
+  return `<div class="modal-overlay" onclick="if(event.target===this)cerrarEditarGasto()">
+    <div class="modal">
+      <div class="modal-header">
+        <div style="font-family:monospace;font-size:13px;font-weight:500;color:var(--accent)">✎ Editar gasto</div>
+        <button onclick="cerrarEditarGasto()" style="background:none;border:none;color:var(--muted);font-size:20px">✕</button>
+      </div>
+      <div class="field"><span class="label">Empresa</span>${buildEmpGrid(eEmp,"setEditEmpresa")}</div>
+      <div class="field"><span class="label">Descripción</span><input value="${esc(eDesc)}" oninput="state._editDesc=this.value"></div>
+      <div class="row2">
+        <div class="field"><span class="label">Monto</span><input type="number" value="${eMonto}" oninput="state._editMonto=this.value" step="0.01"></div>
+        <div class="field"><span class="label">Moneda</span><select onchange="state._editMoneda=this.value">${monOpts}</select></div>
+      </div>
+      <div class="field"><span class="label">Fecha</span><input type="date" value="${eFecha}" onchange="state._editFecha=this.value"></div>
+      <div class="field"><span class="label">Medio de pago</span>${buildMedioPicker(m,sm,"setEditMedio","setEditSubMedio")}</div>
+      <div class="field"><span class="label">Categoría</span><select onchange="state._editCat=this.value"><option value="">Seleccioná...</option>${catOpts}</select></div>
+      <div class="field"><span class="label">Nota</span><input value="${esc(eNota)}" oninput="state._editNota=this.value" placeholder="Aclaración..."></div>
+      <button class="btn-primary" onclick="guardarEdicion()">Guardar cambios</button>
+      <button onclick="cerrarEditarGasto()" style="width:100%;padding:10px;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:13px;cursor:pointer;margin-top:8px">Cancelar</button>
+    </div>
+  </div>`;
 }
 
 function buildCargar() {
@@ -692,7 +729,17 @@ async function procesarIA() {
     const res = await fetch("/.netlify/functions/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:ANTHROPIC_MODEL,max_tokens:500,messages})});
     const data = await res.json();
     if (!data.content) { const errDetail = data.error ? data.error.message || JSON.stringify(data.error) : JSON.stringify(data); throw new Error(errDetail); } const raw = data.content.map(c=>c.text||"").join("").trim();
-    const clean = raw.replace(/```json|```/g,"").trim(); const jsonMatch = clean.match(/\{[\s\S]*\}/); if (!jsonMatch) throw new Error("No JSON en respuesta"); const parsed = JSON.parse(jsonMatch[0]);
+    const clean = raw.replace(/```json|```/g,"").trim();
+    // Try direct parse first, then extract JSON object
+    let parsed;
+    try {
+      parsed = JSON.parse(clean);
+    } catch(e1) {
+      const jm = clean.match(/\{[\s\S]*\}/);
+      if (!jm) throw new Error("Sin JSON: " + clean.slice(0,100));
+      try { parsed = JSON.parse(jm[0]); }
+      catch(e2) { throw new Error("JSON invalido: " + jm[0].slice(0,100)); }
+    }
     setState({iaResult:parsed,iaLoading:false});
   } catch(e) { const errMsg = e.message; console.error('IA Error:', errMsg); showToast("Error IA: "+errMsg); setState({iaLoading:false}); }
 }
@@ -731,6 +778,41 @@ function confirmarIA() {
 }
 
 // Excel
+function editarGasto(id) {
+  const g = state.gastos.find(x=>x.id===id);
+  if(g) { clearEditState(); setState({gastoEditando:g}); }
+}
+function clearEditState() {
+  ["_editDesc","_editMonto","_editMoneda","_editFecha","_editMedio","_editSubMedio","_editCat","_editNota","_editEmpresa"].forEach(k=>delete state[k]);
+}
+function cerrarEditarGasto() { clearEditState(); setState({gastoEditando:null}); }
+function setEditEmpresa(e) { state._editEmpresa=e; render(); }
+function setEditMedio(m) { state._editMedio=m; state._editSubMedio=null; render(); }
+function setEditSubMedio(s) { state._editSubMedio=s; render(); }
+function guardarEdicion() {
+  const g = state.gastoEditando;
+  if(!g) return;
+  const emp = state._editEmpresa!==undefined?state._editEmpresa:g.empresa;
+  if(!emp) return showToast("⚠ Seleccioná una empresa");
+  const m = state._editMedio!==undefined?state._editMedio:(g.medio||"").split(" · ")[0]||null;
+  const sm = state._editSubMedio!==undefined?state._editSubMedio:(g.medio||"").split(" · ")[1]||null;
+  const updated = {
+    ...g,
+    empresa: emp,
+    desc: (state._editDesc!==undefined?state._editDesc:g.desc)||"Sin descripción",
+    monto: parseFloat(state._editMonto!==undefined?state._editMonto:g.monto)||0,
+    moneda: state._editMoneda!==undefined?state._editMoneda:(g.moneda||"ARS"),
+    fecha: state._editFecha!==undefined?state._editFecha:g.fecha,
+    medio: medioStr(m,sm)||g.medio||"No especificado",
+    categoria: (state._editCat!==undefined?state._editCat:g.categoria)||"Sin categoría",
+    nota: state._editNota!==undefined?state._editNota:(g.nota||""),
+  };
+  state.gastos = state.gastos.map(x=>x.id===g.id?updated:x);
+  saveAll();
+  clearEditState();
+  setState({gastoEditando:null});
+  showToast("✓ Gasto actualizado");
+}
 function exportarExcel() {
   if(!state.gastos.length) return showToast("No hay gastos para exportar");
   const wb = XLSX.utils.book_new();
