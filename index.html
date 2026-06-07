@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Gastos">
+<title>Gestor de Gastos</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#0F0F11;--surface:#18181C;--border:#2A2A30;--text:#F0F0F5;--muted:#8888A0;
+  --accent:#F59E0B;--c2:#2563EB;--nafil:#059669;--mb:#EA580C;--cdm:#DC2626;--lck:#7C3AED;
+}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:20px 16px 80px;}
+.app{max-width:600px;margin:0 auto;}
+input,select,textarea,button{font-family:inherit;}
+input,select,textarea{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;padding:10px 12px;outline:none;}
+input:focus,select:focus,textarea:focus{border-color:var(--accent);}
+select option{background:#1a1a20;}
+textarea{resize:vertical;}
+button{cursor:pointer;}
+.label{display:block;font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px;}
+.field{margin-bottom:14px;}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.btn-primary{width:100%;padding:12px;background:var(--accent);color:#0F0F11;border:none;border-radius:8px;font-size:14px;font-weight:600;margin-top:4px;}
+.btn-primary:disabled{opacity:.4;}
+.emp-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
+.tabs{display:flex;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:4px;margin:0 0 20px;}
+.tab{flex:1;padding:8px 2px;border:none;background:transparent;color:var(--muted);font-size:11px;border-radius:7px;font-weight:500;}
+.tab.active{background:var(--border);color:var(--text);}
+.filter-row{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;}
+.filter-btn{padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:12px;font-family:'DM Mono',monospace;}
+.filter-btn.active{border-color:var(--accent);color:var(--accent);}
+.res-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}
+.gasto-item{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+.dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.gasto-desc{font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.gasto-meta{font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;margin-top:2px;}
+.gasto-nota{font-size:11px;color:#555;margin-top:1px;}
+.gasto-monto{font-family:'DM Mono',monospace;font-size:13px;font-weight:500;flex-shrink:0;text-align:right;}
+.btn-icon{background:none;border:none;color:var(--muted);font-size:16px;padding:2px 4px;flex-shrink:0;}
+.medio-tipos{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;}
+.medio-tipo-btn{padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:12px;font-family:'DM Mono',monospace;}
+.medio-subs{display:flex;gap:6px;flex-wrap:wrap;padding:10px;background:var(--bg);border-radius:8px;border:1px solid var(--border);}
+.medio-sub-btn{padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:12px;white-space:nowrap;}
+.split-toggle{display:flex;gap:8px;margin-bottom:16px;}
+.split-btn{padding:7px 14px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:12px;font-family:'DM Mono',monospace;}
+.split-btn.active{border-color:var(--accent);color:var(--accent);background:rgba(245,158,11,.12);}
+.split-row{display:flex;gap:8px;align-items:center;margin-bottom:8px;}
+.pct-wrap{flex:1;position:relative;}
+.pct-sym{position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:13px;pointer-events:none;}
+.upload-zone{border:2px dashed var(--border);border-radius:10px;padding:20px;text-align:center;cursor:pointer;}
+.upload-zone:hover{border-color:var(--accent);}
+.preview-img{width:100%;max-height:180px;object-fit:contain;border-radius:8px;margin-top:12px;}
+.ia-result{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;margin-top:14px;}
+.sugerencia{margin-top:6px;padding:8px 12px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:8px;display:flex;align-items:center;justify-content:space-between;}
+.sync-badge{font-family:'DM Mono',monospace;font-size:11px;}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1E1E26;border:1px solid var(--border);color:var(--text);padding:10px 18px;border-radius:8px;font-size:13px;z-index:999;pointer-events:none;opacity:0;transition:opacity .2s;white-space:nowrap;}
+.toast.show{opacity:1;}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:200;display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto;}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:500px;margin-top:20px;}
+.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;}
+.cats-modal{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:300;display:flex;align-items:center;justify-content:center;padding:16px;}
+.cats-box{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:420px;max-height:80vh;display:flex;flex-direction:column;}
+.cat-item{display:flex;align-items:center;gap:8px;background:var(--bg);border-radius:8px;padding:8px 12px;border:1px solid var(--border);margin-bottom:6px;}
+.plantilla-item{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+.res-card{border-radius:10px;padding:14px;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="app" id="app"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ── Datos ─────────────────────────────────────────────────────
+const EMPRESAS = ["C2","Nafil","MB","CDM","LCK"];
+const ANTHROPIC_MODEL = "claude-sonnet-4-20250514";
+const CATEGORIAS_DEFAULT = ["Combustible","Alimentación","Equipamiento","Mantenimiento","Transporte","Servicios","Honorarios","Marketing","Insumos","Otros"];
+
+const MEDIOS = {
+  Tx:       {color:"#38BDF8",sub:["Santander BW","Santander NF","Santander LC","Galicia C2","Galicia BW","Galicia LC","Supervielle C2","Supervielle LC","BBVA AK","BBVA LC","CIU AK","CIU BW","CIU NF","Macro LC"]},
+  "TC ARS": {color:"#A78BFA",sub:["Mastercard Supervielle Leandro","Mastercard BBVA Leandro","Mastercard Ciudad Mama","AMEX Leandro","Visa Santander Leandro","Visa BBVA Leandro","Visa BBVA Mama","Mastercard BBVA Mamá","Visa Ciudad Mama","AMEX Santander Leandro","Mastercard Ciudad Leandro","Mercadopago Master","VISA MACRO","AMEX MACRO","Visa Supervielle Leandro","Mastercard Cencosud Leandro","Visa GALICIA","MC Galicia"]},
+  "TC U$S": {color:"#34D399",sub:["Visa Chase","MC Citi"]},
+  "TC EUR": {color:"#FCD34D",sub:["Santander débito","Caixabank débito"]},
+  Cash:     {color:"#FB923C",sub:["ARS","U$S","Euros","CLP"]},
+  MP:       {color:"#60A5FA",sub:["MP LC","MP C2","MP AK"]},
+};
+
+const EMP = {
+  C2:    {bg:"rgba(37,99,235,.15)",  border:"#2563EB",text:"#60A5FA"},
+  Nafil: {bg:"rgba(5,150,105,.15)",  border:"#059669",text:"#34D399"},
+  MB:    {bg:"rgba(234,88,12,.15)",  border:"#EA580C",text:"#FB923C"},
+  CDM:   {bg:"rgba(220,38,38,.15)",  border:"#DC2626",text:"#F87171"},
+  LCK:   {bg:"rgba(124,58,237,.15)", border:"#7C3AED",text:"#A78BFA"},
+};
+
+// ── Estado global ─────────────────────────────────────────────
+let state = {
+  tab: "cargar",
+  gastos: load("gastos_v5", []),
+  categorias: load("cats_v5", CATEGORIAS_DEFAULT),
+  plantillas: load("plants_v5", []),
+  // form
+  empresa: null, desc:"", monto:"", moneda:"ARS", fecha:hoy(),
+  medio:null, subMedio:null, categoria:"", nota:"",
+  splitMode:false, splitParts:[{empresa:null,pct:50},{empresa:null,pct:50}],
+  // ia
+  empIA:null, textoLibre:"", iaLoading:false, iaResult:null,
+  imgB64:null, imgPreview:null,
+  iaSplitMode:false, iaSplitParts:[{empresa:null,pct:50},{empresa:null,pct:50}],
+  // voz
+  vozActiva:false, vozStatus:"",
+  // lista
+  filtro:"Todos",
+  // modales
+  showCats:false, plantillaEnUso:null, sugerencia:null,
+  // sync
+  syncStatus:"idle",
+};
+
+function load(key, def) {
+  try { return JSON.parse(localStorage.getItem(key)) || def; } catch { return def; }
+}
+
+function saveAll() {
+  localStorage.setItem("gastos_v5", JSON.stringify(state.gastos));
+  localStorage.setItem("cats_v5", JSON.stringify(state.categorias));
+  localStorage.setItem("plants_v5", JSON.stringify(state.plantillas));
+}
+
+function hoy() { return new Date().toISOString().split("T")[0]; }
+
+function fmtMonto(n, m) {
+  const sym = m==="U$S"?"U$S ":m==="Euros"?"€":m==="CLP"?"CLP ":"$";
+  return sym + Number(n).toLocaleString("es-AR",{minimumFractionDigits:0,maximumFractionDigits:0});
+}
+
+function medioStr(m, sm) { return m?(sm?`${m} · ${sm}`:m):null; }
+
+function splitSum(parts) { return parts.reduce((s,p)=>s+(parseFloat(p.pct)||0),0); }
+
+function detectarFrecuentes() {
+  const count={};
+  state.gastos.forEach(g=>{
+    const k=`${g.empresa}||${(g.desc||"").toLowerCase().trim()}`;
+    if(!count[k]) count[k]={n:0,sample:g};
+    count[k].n++;
+  });
+  return Object.values(count).filter(v=>v.n>=2).map(v=>v.sample);
+}
+
+// Toast
+function showToast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  setTimeout(()=>t.classList.remove("show"), 2400);
+}
+
+// ── Re-render ─────────────────────────────────────────────────
+function setState(updates, doRender=true) {
+  Object.assign(state, updates);
+  if (doRender) render();
+}
+
+function render() {
+  const app = document.getElementById("app");
+  app.innerHTML = buildApp();
+  attachEvents();
+}
+
+// ── HTML builders ─────────────────────────────────────────────
+
+function buildApp() {
+  return `
+    ${buildHeader()}
+    ${buildTabs()}
+    ${state.tab==="cargar"   ? buildCargar()    : ""}
+    ${state.tab==="ia"       ? buildIA()        : ""}
+    ${state.tab==="frecuentes"? buildFrecuentes(): ""}
+    ${state.tab==="lista"    ? buildLista()     : ""}
+    ${state.tab==="resumen"  ? buildResumen()   : ""}
+    ${state.showCats         ? buildModalCats() : ""}
+    ${state.plantillaEnUso   ? buildModalPlantilla() : ""}
+  `;
+}
+
+function buildHeader() {
+  const syncMap = {idle:"",syncing:"<span style='color:#F59E0B;animation:spin 1s linear infinite;display:inline-block'>⟳</span>",ok:"<span style='color:#34D399'>✓ Drive</span>",error:"<span style='color:#EF4444'>✗ Drive</span>",offline:"<span style='color:#8888A0'>◌ offline</span>"};
+  const badges = EMPRESAS.map(e=>`<span style="font-family:monospace;font-size:11px;padding:3px 10px;border-radius:4px;font-weight:500;background:${EMP[e].bg};color:${EMP[e].text};border:1px solid ${EMP[e].border}44">${e}</span>`).join("");
+  return `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <div style="font-family:monospace;font-size:15px;font-weight:500;letter-spacing:-.5px">// GESTOR DE GASTOS</div>
+      <span class="sync-badge">${syncMap[state.syncStatus]||""}</span>
+    </div>
+    <div style="font-family:monospace;font-size:11px;color:var(--muted);margin-bottom:12px">organizador de egresos por empresa</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px">${badges}</div>
+  `;
+}
+
+function buildTabs() {
+  const tabs = [["cargar","＋ Cargar"],["ia","✦ IA"],["frecuentes","★ Frec."],["lista","≡ Gastos"],["resumen","◈ Total"]];
+  return `<div class="tabs">${tabs.map(([id,label])=>`<button class="tab${state.tab===id?" active":""}" onclick="setTab('${id}')">${label}</button>`).join("")}</div>`;
+}
+
+function buildEmpGrid(sel, onclickFn) {
+  return `<div class="emp-grid">${EMPRESAS.map(e=>{
+    const active=sel===e, c=EMP[e];
+    return `<button onclick="${onclickFn}('${e}')" style="padding:10px 8px;border-radius:8px;border:2px solid ${active?c.border:"var(--border)"};background:${active?c.bg:"transparent"};color:${active?c.text:"var(--muted)"};font-family:monospace;font-size:12px;font-weight:500">${e}</button>`;
+  }).join("")}</div>`;
+}
+
+function buildMedioPicker(medio, subMedio, setFn, setSubFn) {
+  const tipos = Object.keys(MEDIOS).map(k=>{
+    const active=medio===k, c=MEDIOS[k].color;
+    return `<button class="medio-tipo-btn" onclick="${setFn}('${k}')" style="border-color:${active?c:"var(--border)"};background:${active?c+"22":"transparent"};color:${active?c:"var(--muted)"};font-weight:${active?600:400}">${k}</button>`;
+  }).join("");
+  const subs = medio ? `<div class="medio-subs">${MEDIOS[medio].sub.map(s=>{
+    const active=subMedio===s, c=MEDIOS[medio].color;
+    return `<button class="medio-sub-btn" onclick="${setSubFn}('${s}')" style="border-color:${active?c:"var(--border)"};background:${active?c+"22":"transparent"};color:${active?c:"var(--muted)"}">${s}</button>`;
+  }).join("")}</div>` : "";
+  return `<div class="medio-tipos">${tipos}</div>${subs}`;
+}
+
+function buildSplitEditor(parts, updateFn, addFn, eqFn) {
+  const total = splitSum(parts);
+  const rows = parts.map((p,i)=>`
+    <div class="split-row">
+      <select style="flex:2" onchange="${updateFn}(${i},'empresa',this.value)">
+        <option value="">Empresa...</option>
+        ${EMPRESAS.map(e=>`<option value="${e}"${p.empresa===e?" selected":""}>${e}</option>`).join("")}
+      </select>
+      <div class="pct-wrap">
+        <input type="number" min="0" max="100" value="${p.pct}" oninput="${updateFn}(${i},'pct',parseFloat(this.value)||0)">
+        <span class="pct-sym">%</span>
+      </div>
+      ${parts.length>2?`<button class="btn-icon" onclick="removeSplitPart_${addFn.replace(/[^a-z]/gi,'')}(${i})">✕</button>`:""}
+    </div>
+  `).join("");
+  return `${rows}
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
+      <button onclick="${addFn}()" style="background:none;border:1px dashed var(--border);border-radius:6px;color:var(--muted);font-size:12px;padding:4px 10px">+ empresa</button>
+      <span style="font-family:monospace;font-size:12px;color:${total===100?"#34D399":"#EF4444"}">Total: ${total}%</span>
+    </div>
+    <button onclick="${eqFn}()" style="margin-top:8px;background:none;border:none;color:var(--muted);font-size:12px;text-decoration:underline">Partes iguales</button>`;
+}
+
+function buildCargar() {
+  const sugHTML = state.sugerencia ? `
+    <div class="sugerencia">
+      <span style="font-size:12px;color:var(--accent)">★ ¿Repetir <b>"${state.sugerencia.desc}"</b>?</span>
+      <button onclick="usarSugerencia()" style="padding:4px 10px;border-radius:6px;background:var(--accent);color:#0F0F11;border:none;font-size:11px;font-weight:600">Usar</button>
+    </div>` : "";
+
+  return `<div class="panel">
+    <div class="split-toggle">
+      <button class="split-btn${!state.splitMode?" active":""}" onclick="setState({splitMode:false})">Una empresa</button>
+      <button class="split-btn${state.splitMode?" active":""}" onclick="setState({splitMode:true})">⟂ Dividir</button>
+    </div>
+    ${!state.splitMode
+      ? `<div class="field"><span class="label">Empresa</span>${buildEmpGrid(state.empresa,"setEmpresa")}</div>`
+      : `<div class="field"><span class="label">División</span>${buildSplitEditor(state.splitParts,"updateSplit","addSplit","eqSplit")}</div>`}
+    <div class="field">
+      <span class="label">Descripción</span>
+      <input id="inp-desc" value="${esc(state.desc)}" oninput="onDescChange(this.value)" placeholder="Ej: Cena, combustible, repuesto...">
+      ${sugHTML}
+    </div>
+    <div class="row2">
+      <div class="field"><span class="label">Monto</span><input id="inp-monto" type="number" value="${state.monto}" oninput="setState({monto:this.value},false)" placeholder="0.00" step="0.01"></div>
+      <div class="field"><span class="label">Moneda</span>
+        <select onchange="setState({moneda:this.value})">
+          ${["ARS","U$S","Euros","CLP"].map(m=>`<option${state.moneda===m?" selected":""}>${m}</option>`).join("")}
+        </select>
+      </div>
+    </div>
+    <div class="field"><span class="label">Fecha</span><input type="date" value="${state.fecha}" onchange="setState({fecha:this.value})"></div>
+    <div class="field"><span class="label">Medio de pago</span>${buildMedioPicker(state.medio,state.subMedio,"setMedio","setSubMedio")}</div>
+    <div class="field">
+      <span class="label" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Categoría</span>
+        <button onclick="setState({showCats:true})" style="background:none;border:none;color:var(--accent);font-size:11px;font-family:monospace;text-transform:uppercase;letter-spacing:.5px">✎ editar</button>
+      </span>
+      <select onchange="setState({categoria:this.value})">
+        <option value="">Seleccioná...</option>
+        ${state.categorias.map(c=>`<option${state.categoria===c?" selected":""}>${c}</option>`).join("")}
+      </select>
+    </div>
+    <div class="field"><span class="label">Nota (opcional)</span><input value="${esc(state.nota)}" oninput="setState({nota:this.value},false)" placeholder="Aclaración..."></div>
+    <button class="btn-primary" onclick="agregarGasto()">${state.splitMode?`Agregar ${state.splitParts.length} gastos divididos`:"Agregar gasto"}</button>
+  </div>`;
+}
+
+function buildIA() {
+  const preview = state.imgPreview ? `<img src="${state.imgPreview}" class="preview-img">` : "";
+  const vozBtn = `<button onclick="${state.vozActiva?"detenerVoz":"iniciarVoz"}()" style="position:absolute;top:10px;right:10px;width:32px;height:32px;border-radius:50%;border:2px solid ${state.vozActiva?"#EF4444":"var(--accent)"};background:${state.vozActiva?"rgba(239,68,68,.15)":"rgba(245,158,11,.1)"};color:${state.vozActiva?"#EF4444":"var(--accent)"};font-size:15px;display:flex;align-items:center;justify-content:center;animation:${state.vozActiva?"pulse 1s infinite":"none"}">${state.vozActiva?"⏹":"🎙"}</button>`;
+  const vozStatus = state.vozStatus==="escuchando"?`<div style="font-size:12px;color:#EF4444;margin-top:5px;font-family:monospace">● Escuchando...</div>`:state.vozStatus==="listo"?`<div style="font-size:12px;color:#34D399;margin-top:5px;font-family:monospace">✓ Listo</div>`:"";
+
+  let resultHTML = "";
+  if (state.iaResult) {
+    const r = state.iaResult;
+    resultHTML = `<div class="ia-result">
+      <div style="color:var(--accent);font-weight:600;margin-bottom:8px">✓ Datos detectados</div>
+      ${[["Descripción",r.desc],["Monto",r.monto?`${r.moneda||"ARS"} ${Number(r.monto).toLocaleString("es-AR")}`:"—"],["Fecha",r.fecha||"hoy"],["Medio",medioStr(r.medio,r.subMedio)||"—"],["Categoría",r.categoria]].map(([k,v])=>`<div style="font-size:13px;line-height:1.9"><span style="color:var(--muted)">${k}:</span> ${v||"—"}</div>`).join("")}
+      ${state.iaSplitMode?`<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">${state.iaSplitParts.map(p=>`<div style="font-size:13px;line-height:1.9"><span style="color:${EMP[p.empresa]?.text||"var(--muted)"}>${p.empresa||"?"}</span><span style="color:var(--muted)"> → ${p.pct}% = </span>${r.monto?`${r.moneda||"ARS"} ${Number(r.monto*p.pct/100).toLocaleString("es-AR")}`:"—"}</div>`).join("")}</div>`:""}
+      <button class="btn-primary" onclick="confirmarIA()" style="margin-top:12px">${state.iaSplitMode?`Confirmar ${state.iaSplitParts.length} gastos`:"Confirmar y agregar"}</button>
+    </div>`;
+  }
+
+  return `<div class="panel">
+    <div class="split-toggle">
+      <button class="split-btn${!state.iaSplitMode?" active":""}" onclick="setState({iaSplitMode:false})">Una empresa</button>
+      <button class="split-btn${state.iaSplitMode?" active":""}" onclick="setState({iaSplitMode:true})">⟂ Dividir</button>
+    </div>
+    ${!state.iaSplitMode
+      ? `<div class="field"><span class="label">Empresa</span>${buildEmpGrid(state.empIA,"setEmpIA")}</div>`
+      : `<div class="field"><span class="label">División</span>${buildSplitEditor(state.iaSplitParts,"updateIASplit","addIASplit","eqIASplit")}</div>`}
+    <div class="field">
+      <span class="label">Imagen del comprobante</span>
+      <div class="upload-zone" onclick="document.getElementById('fileInput').click()">
+        <div style="font-size:26px">📷</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:6px">Tocá para subir foto<br><span style="font-size:11px">JPG, PNG — ticket, factura, captura</span></div>
+      </div>
+      <input type="file" id="fileInput" accept="image/*" style="display:none" onchange="handleFile(this)">
+      ${preview}
+    </div>
+    <div class="field">
+      <span class="label">O dictá / escribí el gasto</span>
+      <div style="position:relative">
+        <textarea id="txt-libre" style="padding-right:50px;min-height:76px" oninput="setState({textoLibre:this.value},false)" placeholder="Ej: Pagué U$S 150 con Visa Chase en hotel para CDM...">${esc(state.textoLibre)}</textarea>
+        ${vozBtn}
+      </div>
+      ${vozStatus}
+    </div>
+    <button class="btn-primary" onclick="procesarIA()" ${state.iaLoading?"disabled":""}>${state.iaLoading?"⏳ Analizando...":"✦ Analizar con IA"}</button>
+    ${resultHTML}
+  </div>`;
+}
+
+function buildFrecuentes() {
+  const plantillasHTML = state.plantillas.length
+    ? state.plantillas.map(p=>`
+      <div class="plantilla-item">
+        <div class="dot" style="background:${EMP[p.empresa]?.border||"#666"}"></div>
+        <div style="flex:1;min-width:0">
+          <div class="gasto-desc">${esc(p.desc)}</div>
+          <div class="gasto-meta">${p.empresa} · ${p.medio||"—"} · ${fmtMonto(p.monto,p.moneda)}</div>
+        </div>
+        <button onclick="usarPlantilla(${p.id||p.plantillaId})" style="padding:5px 12px;border-radius:6px;background:rgba(245,158,11,.12);border:1px solid var(--accent);color:var(--accent);font-size:12px;flex-shrink:0">Usar</button>
+        <button onclick="eliminarPlantilla(${p.id||p.plantillaId})" class="btn-icon">🗑</button>
+      </div>`).join("")
+    : `<div style="text-align:center;padding:20px 0;color:var(--muted);font-size:13px">Guardá un gasto como plantilla desde ≡ Gastos tocando ★</div>`;
+
+  const auto = detectarFrecuentes();
+  const plantIds = new Set(state.plantillas.map(p=>p.id||p.plantillaId));
+  const autoHTML = auto.length ? `
+    <div class="panel">
+      <span class="label">⟳ Detectados automáticamente</span>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Gastos que repetís frecuentemente</div>
+      ${auto.map(g=>`
+        <div class="plantilla-item">
+          <div class="dot" style="background:${EMP[g.empresa]?.border||"#666"}"></div>
+          <div style="flex:1;min-width:0">
+            <div class="gasto-desc">${esc(g.desc)}</div>
+            <div class="gasto-meta">${g.empresa} · ${g.medio||"—"}</div>
+          </div>
+          <button onclick="usarPlantilla_auto(${g.id})" style="padding:5px 12px;border-radius:6px;background:rgba(56,189,248,.1);border:1px solid #38BDF8;color:#38BDF8;font-size:12px;flex-shrink:0">Usar</button>
+          <button onclick="guardarPlantilla(${g.id})" style="padding:5px 10px;border-radius:6px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);color:var(--accent);font-size:11px;flex-shrink:0">★ Guardar</button>
+        </div>`).join("")}
+    </div>` : "";
+
+  return `
+    <div class="panel">
+      <span class="label">★ Mis plantillas</span>
+      ${plantillasHTML}
+    </div>
+    ${autoHTML}`;
+}
+
+function buildLista() {
+  const filtrados = state.filtro==="Todos" ? state.gastos : state.gastos.filter(g=>g.empresa===state.filtro);
+  const sorted = [...filtrados].sort((a,b)=>new Date(b.fecha)-new Date(a.fecha));
+  const filterBtns = ["Todos",...EMPRESAS].map(f=>`<button class="filter-btn${state.filtro===f?" active":""}" onclick="setFiltro('${f}')">${f}</button>`).join("");
+  const items = sorted.length ? sorted.map(g=>`
+    <div class="gasto-item">
+      <div class="dot" style="background:${EMP[g.empresa]?.border||"#666"}"></div>
+      <div style="flex:1;min-width:0">
+        <div class="gasto-desc">${esc(g.desc)}</div>
+        <div class="gasto-meta">${g.fecha.split("-").reverse().join("/")} · ${g.empresa} · ${g.medio||"—"}</div>
+        ${g.nota?`<div class="gasto-nota">${esc(g.nota)}</div>`:""}
+      </div>
+      <div class="gasto-monto">
+        <div>${fmtMonto(g.monto,g.moneda)}</div>
+        ${g.moneda&&g.moneda!=="ARS"?`<div style="font-size:10px;color:var(--muted)">${g.moneda}</div>`:""}
+      </div>
+      <button class="btn-icon" onclick="guardarPlantilla(${g.id})" title="Guardar como plantilla">★</button>
+      <button class="btn-icon" onclick="eliminarGasto(${g.id})">✕</button>
+    </div>`).join("") : `<div style="text-align:center;padding:32px;color:var(--muted);font-size:13px">Sin gastos aún.</div>`;
+
+  return `<div class="panel"><div class="filter-row">${filterBtns}</div>${items}</div>`;
+}
+
+function buildResumen() {
+  const cards = EMPRESAS.map(e=>{
+    const eg = state.gastos.filter(g=>g.empresa===e);
+    const total = eg.filter(g=>!g.moneda||g.moneda==="ARS").reduce((s,g)=>s+g.monto,0);
+    const c = EMP[e];
+    return `<div class="res-card" style="border:1px solid ${c.border}55;background:${c.bg}">
+      <div style="font-size:10px;font-family:monospace;color:var(--muted);text-transform:uppercase">${e}</div>
+      <div style="font-size:17px;font-family:monospace;font-weight:500;color:${c.text};margin-top:4px">${fmtMonto(total,"ARS")}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">${eg.length} gasto${eg.length!==1?"s":""}</div>
+    </div>`;
+  }).join("");
+  const totalARS = state.gastos.filter(g=>!g.moneda||g.moneda==="ARS").reduce((s,g)=>s+g.monto,0);
+  return `<div class="panel">
+    <div class="res-grid">${cards}</div>
+    <div style="margin-bottom:20px">
+      <div class="label">Total ARS</div>
+      <div style="font-family:monospace;font-size:26px;font-weight:500;color:var(--accent)">${fmtMonto(totalARS,"ARS")}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">${state.gastos.length} gastos registrados</div>
+    </div>
+    <button onclick="exportarExcel()" style="width:100%;padding:13px;background:linear-gradient(135deg,#065F46,#059669);color:white;border:none;border-radius:8px;font-size:14px;font-weight:600">⬇ Exportar a Excel</button>
+  </div>`;
+}
+
+function buildModalCats() {
+  const items = state.categorias.map((c,i)=>`
+    <div class="cat-item">
+      <span style="flex:1;font-size:13px">${esc(c)}</span>
+      <button onclick="editCat(${i})" style="background:none;border:none;color:var(--muted);font-size:14px">✎</button>
+      <button onclick="delCat(${i})" style="background:none;border:none;color:var(--muted);font-size:14px">🗑</button>
+    </div>`).join("");
+  return `<div class="cats-modal" onclick="if(event.target===this)setState({showCats:false})">
+    <div class="cats-box">
+      <div class="modal-header">
+        <div style="font-family:monospace;font-size:14px;font-weight:500">// CATEGORÍAS</div>
+        <button onclick="setState({showCats:false})" style="background:none;border:none;color:var(--muted);font-size:20px">✕</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <input id="nueva-cat" placeholder="Nueva categoría..." onkeydown="if(event.key==='Enter')addCat()">
+        <button onclick="addCat()" style="padding:10px 16px;background:var(--accent);color:#0F0F11;border:none;border-radius:8px;font-weight:600;font-size:14px;flex-shrink:0">+</button>
+      </div>
+      <div style="overflow-y:auto;flex:1">${items}</div>
+    </div>
+  </div>`;
+}
+
+function buildModalPlantilla() {
+  const p = state.plantillaEnUso;
+  const partesMedio = (p.medio||"").split(" · ");
+  const m = state._modalMedio !== undefined ? state._modalMedio : (partesMedio[0]||null);
+  const sm = state._modalSubMedio !== undefined ? state._modalSubMedio : (partesMedio[1]||null);
+  const mDesc = state._modalDesc !== undefined ? state._modalDesc : (p.desc||"");
+  const mMonto = state._modalMonto !== undefined ? state._modalMonto : (p.monto||"");
+  const mMoneda = state._modalMoneda !== undefined ? state._modalMoneda : (p.moneda||"ARS");
+  const mFecha = state._modalFecha !== undefined ? state._modalFecha : hoy();
+  const mCat = state._modalCat !== undefined ? state._modalCat : (p.categoria||"");
+  const mNota = state._modalNota !== undefined ? state._modalNota : (p.nota||"");
+  const mEmp = state._modalEmpresa !== undefined ? state._modalEmpresa : (p.empresa||null);
+
+  return `<div class="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <div style="font-family:monospace;font-size:13px;font-weight:500;color:var(--accent)">★ Usar plantilla</div>
+        <button onclick="cerrarModal()" style="background:none;border:none;color:var(--muted);font-size:20px">✕</button>
+      </div>
+      <div class="field"><span class="label">Empresa</span>${buildEmpGrid(mEmp,"setModalEmpresa")}</div>
+      <div class="field"><span class="label">Descripción</span><input value="${esc(mDesc)}" oninput="state._modalDesc=this.value"></div>
+      <div class="row2">
+        <div class="field"><span class="label">Monto</span><input type="number" value="${mMonto}" oninput="state._modalMonto=this.value" step="0.01"></div>
+        <div class="field"><span class="label">Moneda</span>
+          <select onchange="state._modalMoneda=this.value">
+            ${["ARS","U$S","Euros","CLP"].map(mo=>`<option${mMoneda===mo?" selected":""}>${mo}</option>`).join("")}
+          </select>
+        </div>
+      </div>
+      <div class="field"><span class="label">Fecha</span><input type="date" value="${mFecha}" onchange="state._modalFecha=this.value"></div>
+      <div class="field"><span class="label">Medio de pago</span>${buildMedioPicker(m,sm,"setModalMedio","setModalSubMedio")}</div>
+      <div class="field"><span class="label">Categoría</span>
+        <select onchange="state._modalCat=this.value">
+          <option value="">Seleccioná...</option>
+          ${state.categorias.map(c=>`<option${mCat===c?" selected":""}>${c}</option>`).join("")}
+        </select>
+      </div>
+      <div class="field"><span class="label">Nota</span><input value="${esc(mNota)}" oninput="state._modalNota=this.value"></div>
+      <button class="btn-primary" onclick="confirmarPlantilla()">Confirmar y agregar</button>
+    </div>
+  </div>`;
+}
+
+function esc(s) { return (s||"").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+// ── Eventos ────────────────────────────────────────────────────
+function attachEvents() {
+  // file input
+  const fi = document.getElementById("fileInput");
+  if (fi) fi.onchange = function(){ handleFile(this); };
+}
+
+// ── Acciones ───────────────────────────────────────────────────
+function setTab(t) { setState({tab:t}); }
+function setFiltro(f) { setState({filtro:f}); }
+function setEmpresa(e) { setState({empresa:e}); }
+function setEmpIA(e) { setState({empIA:e}); }
+function setModalEmpresa(e) { state._modalEmpresa=e; render(); }
+
+function setMedio(m) {
+  let moneda = state.moneda;
+  if(m==="TC U$S") moneda="U$S";
+  else if(m==="TC EUR") moneda="Euros";
+  setState({medio:m,subMedio:null,moneda});
+}
+function setSubMedio(s) { setState({subMedio:s}); }
+function setModalMedio(m) { state._modalMedio=m; state._modalSubMedio=null; render(); }
+function setModalSubMedio(s) { state._modalSubMedio=s; render(); }
+
+function onDescChange(v) {
+  state.desc = v;
+  // Sugerencia automática
+  let sug = null;
+  if (v.length >= 3) {
+    const key = v.toLowerCase().trim();
+    sug = state.gastos.find(g => g.desc && (g.desc.toLowerCase().includes(key) || key.includes(g.desc.toLowerCase().trim().slice(0,4))));
+    if (sug && sug.desc.toLowerCase() === v.toLowerCase()) sug = null;
+  }
+  setState({sugerencia:sug});
+}
+
+function usarSugerencia() { setState({plantillaEnUso:state.sugerencia}); clearModalState(); }
+
+function updateSplit(i,field,val) { const p=[...state.splitParts]; p[i]={...p[i],[field]:val}; setState({splitParts:p}); }
+function addSplit() { setState({splitParts:[...state.splitParts,{empresa:null,pct:0}]}); }
+function eqSplit() { const n=state.splitParts.length,eq=Math.floor(100/n),rem=100-eq*n; setState({splitParts:state.splitParts.map((p,i)=>({...p,pct:eq+(i===0?rem:0)}))}); }
+function removeSplitPartaddSplit(i) { setState({splitParts:state.splitParts.filter((_,j)=>j!==i)}); }
+
+function updateIASplit(i,field,val) { const p=[...state.iaSplitParts]; p[i]={...p[i],[field]:val}; setState({iaSplitParts:p}); }
+function addIASplit() { setState({iaSplitParts:[...state.iaSplitParts,{empresa:null,pct:0}]}); }
+function eqIASplit() { const n=state.iaSplitParts.length,eq=Math.floor(100/n),rem=100-eq*n; setState({iaSplitParts:state.iaSplitParts.map((p,i)=>({...p,pct:eq+(i===0?rem:0)}))}); }
+function removeSplitPartaddIASplit(i) { setState({iaSplitParts:state.iaSplitParts.filter((_,j)=>j!==i)}); }
+
+function agregarGasto() {
+  const desc = state.desc.trim();
+  if(!desc) return showToast("⚠ Escribí una descripción");
+  if(!state.monto||parseFloat(state.monto)<=0) return showToast("⚠ Ingresá un monto válido");
+  const base = {desc,monto:parseFloat(state.monto),moneda:state.moneda,fecha:state.fecha,medio:medioStr(state.medio,state.subMedio)||"No especificado",categoria:state.categoria||"Sin categoría",nota:state.nota.trim()};
+  if(state.splitMode) {
+    if(splitSum(state.splitParts)!==100) return showToast("⚠ Los % deben sumar 100");
+    if(state.splitParts.some(p=>!p.empresa)) return showToast("⚠ Asigná empresa a cada parte");
+    const nuevos = state.splitParts.map((p,i)=>({...base,id:Date.now()+i,empresa:p.empresa,monto:Math.round(base.monto*p.pct/100*100)/100,nota:`${base.nota?base.nota+" · ":""}División ${p.pct}%`}));
+    state.gastos = [...state.gastos,...nuevos];
+    showToast(`✓ ${nuevos.length} gastos agregados`);
+  } else {
+    if(!state.empresa) return showToast("⚠ Seleccioná una empresa");
+    state.gastos = [...state.gastos,{id:Date.now(),empresa:state.empresa,...base}];
+    showToast("✓ Gasto agregado");
+  }
+  saveAll();
+  setState({desc:"",monto:"",fecha:hoy(),nota:"",categoria:"",medio:null,subMedio:null,empresa:null,moneda:"ARS",sugerencia:null});
+}
+
+function eliminarGasto(id) { state.gastos=state.gastos.filter(g=>g.id!==id); saveAll(); render(); }
+
+function guardarPlantilla(id) {
+  const g = state.gastos.find(x=>x.id===id);
+  if(!g) return;
+  if(state.plantillas.find(p=>p.empresa===g.empresa&&p.desc===g.desc)) return showToast("Ya existe en plantillas");
+  state.plantillas = [...state.plantillas,{...g,plantillaId:Date.now()}];
+  saveAll(); showToast("★ Guardada como plantilla"); render();
+}
+
+function eliminarPlantilla(id) {
+  state.plantillas = state.plantillas.filter(p=>p.id!==id&&p.plantillaId!==id);
+  saveAll(); render();
+}
+
+function usarPlantilla(id) {
+  const p = state.plantillas.find(x=>x.id===id||x.plantillaId===id);
+  if(p) { clearModalState(); setState({plantillaEnUso:p}); }
+}
+
+function usarPlantilla_auto(id) {
+  const g = state.gastos.find(x=>x.id===id);
+  if(g) { clearModalState(); setState({plantillaEnUso:g}); }
+}
+
+function clearModalState() {
+  delete state._modalDesc; delete state._modalMonto; delete state._modalMoneda;
+  delete state._modalFecha; delete state._modalMedio; delete state._modalSubMedio;
+  delete state._modalCat; delete state._modalNota; delete state._modalEmpresa;
+}
+
+function cerrarModal() { clearModalState(); setState({plantillaEnUso:null}); }
+
+function confirmarPlantilla() {
+  const p = state.plantillaEnUso;
+  const emp = state._modalEmpresa !== undefined ? state._modalEmpresa : p.empresa;
+  if(!emp) return showToast("⚠ Seleccioná una empresa");
+  const m = state._modalMonto !== undefined ? state._modalMonto : p.monto;
+  if(!m||parseFloat(m)<=0) return showToast("⚠ Ingresá un monto válido");
+  const medio = state._modalMedio !== undefined ? state._modalMedio : (p.medio||"").split(" · ")[0]||null;
+  const subM = state._modalSubMedio !== undefined ? state._modalSubMedio : (p.medio||"").split(" · ")[1]||null;
+  const nuevo = {
+    id:Date.now(), empresa:emp,
+    desc: state._modalDesc !== undefined ? state._modalDesc : p.desc,
+    monto: parseFloat(m),
+    moneda: state._modalMoneda !== undefined ? state._modalMoneda : (p.moneda||"ARS"),
+    fecha: state._modalFecha !== undefined ? state._modalFecha : hoy(),
+    medio: medioStr(medio,subM)||"No especificado",
+    categoria: state._modalCat !== undefined ? state._modalCat : (p.categoria||"Sin categoría"),
+    nota: state._modalNota !== undefined ? state._modalNota : (p.nota||""),
+  };
+  state.gastos = [...state.gastos, nuevo];
+  saveAll();
+  clearModalState();
+  setState({plantillaEnUso:null});
+  showToast("✓ Gasto agregado");
+}
+
+// Categorías
+function addCat() { const v=document.getElementById("nueva-cat").value.trim(); if(!v||state.categorias.includes(v))return; state.categorias=[...state.categorias,v]; saveAll(); render(); }
+function delCat(i) { state.categorias=state.categorias.filter((_,j)=>j!==i); saveAll(); render(); }
+function editCat(i) {
+  const v = prompt("Renombrar categoría:", state.categorias[i]);
+  if(v&&v.trim()) { state.categorias=state.categorias.map((c,j)=>j===i?v.trim():c); saveAll(); render(); }
+}
+
+// Archivo
+function handleFile(input) {
+  const file = input.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e => { setState({imgPreview:e.target.result,imgB64:e.target.result.split(",")[1]}); };
+  reader.readAsDataURL(file);
+}
+
+// Voz
+let recognition = null;
+function iniciarVoz() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR) { showToast("⚠ Usá el dictado del teclado"); return; }
+  recognition = new SR();
+  recognition.lang="es-AR"; recognition.continuous=false; recognition.interimResults=true;
+  recognition.onstart = ()=>setState({vozActiva:true,vozStatus:"escuchando"});
+  recognition.onresult = e=>{
+    const t=Array.from(e.results).map(r=>r[0].transcript).join("");
+    state.textoLibre=t; state.vozStatus=e.results[e.results.length-1].isFinal?"listo":"escuchando"; render();
+  };
+  recognition.onerror = e=>{setState({vozActiva:false,vozStatus:"error"}); showToast("Error mic: "+e.error);};
+  recognition.onend = ()=>setState({vozActiva:false});
+  recognition.start();
+}
+function detenerVoz() { if(recognition) recognition.stop(); setState({vozActiva:false}); }
+
+// IA
+async function procesarIA() {
+  if(!state.imgB64&&!state.textoLibre.trim()) return showToast("⚠ Subí imagen o escribí algo");
+  if(!state.iaSplitMode&&!state.empIA) return showToast("⚠ Seleccioná empresa");
+  setState({iaLoading:true,iaResult:null});
+  try {
+    const prompt = (state.textoLibre?`Texto: "${state.textoLibre}". `:"") + `Extraé: desc, monto (número), moneda (ARS/U$S/Euros/CLP), fecha (YYYY-MM-DD o null), medio (Tx/TC ARS/TC U$S/TC EUR/Cash/MP), subMedio (o null), categoria (una de: ${state.categorias.join("/")}). Solo JSON sin backticks.`;
+    let messages;
+    if(state.imgB64) {
+      messages=[{role:"user",content:[{type:"image",source:{type:"base64",media_type:"image/jpeg",data:state.imgB64}},{type:"text",text:prompt}]}];
+    } else {
+      messages=[{role:"user",content:`Del texto: "${state.textoLibre.trim()}". ${prompt}`}];
+    }
+    const res = await fetch("/.netlify/functions/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:ANTHROPIC_MODEL,max_tokens:500,messages})});
+    const data = await res.json();
+    const raw = data.content.map(c=>c.text||"").join("").trim();
+    const clean = raw.replace(/```json|```/g,"").trim(); const jsonMatch = clean.match(/\{[\s\S]*\}/); if (!jsonMatch) throw new Error("No JSON en respuesta"); const parsed = JSON.parse(jsonMatch[0]);
+    setState({iaResult:parsed,iaLoading:false});
+  } catch(e) { showToast("Error IA: "+e.message); setState({iaLoading:false}); }
+}
+
+function confirmarIA() {
+  const r = state.iaResult;
+  if(!r) return;
+  const base = {desc:r.desc||"Sin descripción",monto:parseFloat(r.monto)||0,moneda:r.moneda||"ARS",fecha:r.fecha||hoy(),medio:medioStr(r.medio,r.subMedio)||"No especificado",categoria:r.categoria||"Otros",nota:"Cargado via IA"};
+  if(state.iaSplitMode) {
+    if(splitSum(state.iaSplitParts)!==100) return showToast("⚠ Los % deben sumar 100");
+    if(state.iaSplitParts.some(p=>!p.empresa)) return showToast("⚠ Asigná empresa a cada parte");
+    const nuevos = state.iaSplitParts.map((p,i)=>({...base,id:Date.now()+i,empresa:p.empresa,monto:Math.round(base.monto*p.pct/100*100)/100}));
+    state.gastos=[...state.gastos,...nuevos];
+    showToast(`✓ ${nuevos.length} gastos agregados`);
+  } else {
+    state.gastos=[...state.gastos,{id:Date.now(),empresa:state.empIA,...base}];
+    showToast("✓ Gasto agregado");
+  }
+  saveAll();
+  setState({iaResult:null,imgB64:null,imgPreview:null,textoLibre:""});
+}
+
+// Excel
+function exportarExcel() {
+  if(!state.gastos.length) return showToast("No hay gastos para exportar");
+  const wb = XLSX.utils.book_new();
+  const headers = ["Fecha","Empresa","Descripción","Categoría","Medio de pago","Moneda","Monto","Nota"];
+  EMPRESAS.forEach(emp=>{
+    const rows=state.gastos.filter(g=>g.empresa===emp).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(g=>[g.fecha,g.empresa,g.desc,g.categoria,g.medio,g.moneda||"ARS",g.monto,g.nota||""]);
+    const ws=XLSX.utils.aoa_to_sheet([headers,...rows]);
+    ws["!cols"]=[12,10,30,18,22,8,12,25].map(w=>({wch:w}));
+    XLSX.utils.book_append_sheet(wb,ws,emp);
+  });
+  const allRows=[...state.gastos].sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(g=>[g.fecha,g.empresa,g.desc,g.categoria,g.medio,g.moneda||"ARS",g.monto,g.nota||""]);
+  const wsAll=XLSX.utils.aoa_to_sheet([headers,...allRows]);
+  wsAll["!cols"]=[12,10,30,18,22,8,12,25].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb,wsAll,"Todos");
+  XLSX.writeFile(wb,`gastos_${hoy()}.xlsx`);
+  showToast("✓ Excel exportado");
+}
+
+// ── Init ──────────────────────────────────────────────────────
+render();
+</script>
+</body>
+</html>
