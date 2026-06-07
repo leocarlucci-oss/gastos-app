@@ -305,13 +305,30 @@ function buildIA() {
   let resultHTML = "";
   if (state.iaResult) {
     const r = state.iaResult;
+    const eDesc = state._iaDesc !== undefined ? state._iaDesc : (r.desc||"");
+    const eMonto = state._iaMonto !== undefined ? state._iaMonto : (r.monto||"");
+    const eMoneda = state._iaMoneda !== undefined ? state._iaMoneda : (r.moneda||"ARS");
+    const eFecha = state._iaFecha !== undefined ? state._iaFecha : (r.fecha||hoy());
+    const eMedio = state._iaMedio !== undefined ? state._iaMedio : (r.medio||null);
+    const eSubMedio = state._iaSubMedio !== undefined ? state._iaSubMedio : (r.subMedio||null);
+    const eCat = state._iaCat !== undefined ? state._iaCat : (r.categoria||"");
+    const eNota = state._iaNota !== undefined ? state._iaNota : "";
+    const cats = state.categorias.map(c=>`<option${eCat===c?" selected":""}>${c}</option>`).join("");
     resultHTML = `<div class="ia-result">
-      <div style="color:var(--accent);font-weight:600;margin-bottom:8px">✓ Datos detectados</div>
-      ${[["Descripción",r.desc],["Monto",r.monto?`${r.moneda||"ARS"} ${Number(r.monto).toLocaleString("es-AR")}`:"—"],["Fecha",r.fecha||"hoy"],["Medio",medioStr(r.medio,r.subMedio)||"—"],["Categoría",r.categoria]].map(([k,v])=>`<div style="font-size:13px;line-height:1.9"><span style="color:var(--muted)">${k}:</span> ${v||"—"}</div>`).join("")}
-      ${state.iaSplitMode?`<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">${state.iaSplitParts.map(p=>`<div style="font-size:13px;line-height:1.9"><span style="color:${EMP[p.empresa]?.text||"var(--muted)"}>${p.empresa||"?"}</span><span style="color:var(--muted)"> → ${p.pct}% = </span>${r.monto?`${r.moneda||"ARS"} ${Number(r.monto*p.pct/100).toLocaleString("es-AR")}`:"—"}</div>`).join("")}</div>`:""}
-      <button class="btn-primary" onclick="confirmarIA()" style="margin-top:12px">${state.iaSplitMode?`Confirmar ${state.iaSplitParts.length} gastos`:"Confirmar y agregar"}</button>
+      <div style="color:var(--accent);font-weight:600;margin-bottom:12px">✓ Revisá y editá antes de confirmar</div>
+      <div class="field"><span class="label">Descripción</span><input value="${esc(eDesc)}" oninput="state._iaDesc=this.value"></div>
+      <div class="row2">
+        <div class="field"><span class="label">Monto</span><input type="number" value="${eMonto}" oninput="state._iaMonto=this.value" step="0.01"></div>
+        <div class="field"><span class="label">Moneda</span><select onchange="state._iaMoneda=this.value"><option${eMoneda==="ARS"?" selected":""}>ARS</option><option${eMoneda==="U$S"?" selected":""}>U$S</option><option${eMoneda==="Euros"?" selected":""}>Euros</option><option${eMoneda==="CLP"?" selected":""}>CLP</option></select></div>
+      </div>
+      <div class="field"><span class="label">Fecha</span><input type="date" value="${eFecha}" onchange="state._iaFecha=this.value"></div>
+      <div class="field"><span class="label">Medio de pago</span>${buildMedioPicker(eMedio,eSubMedio,"setIAMedio","setIASubMedio")}</div>
+      <div class="field"><span class="label">Categoría</span><select onchange="state._iaCat=this.value"><option value="">Seleccioná...</option>${cats}</select></div>
+      <div class="field"><span class="label">Nota</span><input value="${esc(eNota)}" oninput="state._iaNota=this.value" placeholder="Aclaración..."></div>
+      <button class="btn-primary" onclick="confirmarIA()" style="margin-top:4px">${state.iaSplitMode?`Confirmar ${state.iaSplitParts.length} gastos`:"Confirmar y agregar"}</button>
+      <button onclick="cancelarIA()" style="width:100%;padding:10px;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:13px;cursor:pointer;margin-top:8px">Cancelar</button>
     </div>`;
-  }
+  }  }
 
   return `<div class="panel">
     <div class="split-toggle">
@@ -678,10 +695,26 @@ async function procesarIA() {
   } catch(e) { const errMsg = e.message; console.error('IA Error:', errMsg); showToast("Error IA: "+errMsg); setState({iaLoading:false}); }
 }
 
+function setIAMedio(m) { state._iaMedio=m; state._iaSubMedio=null; render(); }
+function setIASubMedio(s) { state._iaSubMedio=s; render(); }
+function cancelarIA() {
+  delete state._iaDesc; delete state._iaMonto; delete state._iaMoneda;
+  delete state._iaFecha; delete state._iaMedio; delete state._iaSubMedio;
+  delete state._iaCat; delete state._iaNota;
+  setState({iaResult:null});
+}
 function confirmarIA() {
   const r = state.iaResult;
   if(!r) return;
-  const base = {desc:r.desc||"Sin descripción",monto:parseFloat(r.monto)||0,moneda:r.moneda||"ARS",fecha:r.fecha||hoy(),medio:medioStr(r.medio,r.subMedio)||"No especificado",categoria:r.categoria||"Otros",nota:"Cargado via IA"};
+  const eDesc = state._iaDesc !== undefined ? state._iaDesc : (r.desc||"");
+  const eMonto = state._iaMonto !== undefined ? state._iaMonto : (r.monto||0);
+  const eMoneda = state._iaMoneda !== undefined ? state._iaMoneda : (r.moneda||"ARS");
+  const eFecha = state._iaFecha !== undefined ? state._iaFecha : (r.fecha||hoy());
+  const eMedio = state._iaMedio !== undefined ? state._iaMedio : (r.medio||null);
+  const eSubMedio = state._iaSubMedio !== undefined ? state._iaSubMedio : (r.subMedio||null);
+  const eCat = state._iaCat !== undefined ? state._iaCat : (r.categoria||"Otros");
+  const eNota = state._iaNota !== undefined ? state._iaNota : "";
+  const base = {desc:eDesc||"Sin descripción",monto:parseFloat(eMonto)||0,moneda:eMoneda,fecha:eFecha,medio:medioStr(eMedio,eSubMedio)||"No especificado",categoria:eCat||"Otros",nota:eNota};
   if(state.iaSplitMode) {
     if(splitSum(state.iaSplitParts)!==100) return showToast("⚠ Los % deben sumar 100");
     if(state.iaSplitParts.some(p=>!p.empresa)) return showToast("⚠ Asigná empresa a cada parte");
@@ -693,6 +726,9 @@ function confirmarIA() {
     showToast("✓ Gasto agregado");
   }
   saveAll();
+  delete state._iaDesc; delete state._iaMonto; delete state._iaMoneda;
+  delete state._iaFecha; delete state._iaMedio; delete state._iaSubMedio;
+  delete state._iaCat; delete state._iaNota;
   setState({iaResult:null,imgB64:null,imgPreview:null,textoLibre:""});
 }
 
