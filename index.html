@@ -672,10 +672,10 @@ async function procesarIA() {
     }
     const res = await fetch("/.netlify/functions/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:ANTHROPIC_MODEL,max_tokens:500,messages})});
     const data = await res.json();
-    const raw = data.content.map(c=>c.text||"").join("").trim();
+    if (!data.content) { const errDetail = data.error ? data.error.message || JSON.stringify(data.error) : JSON.stringify(data); throw new Error(errDetail); } const raw = data.content.map(c=>c.text||"").join("").trim();
     const clean = raw.replace(/```json|```/g,"").trim(); const jsonMatch = clean.match(/\{[\s\S]*\}/); if (!jsonMatch) throw new Error("No JSON en respuesta"); const parsed = JSON.parse(jsonMatch[0]);
     setState({iaResult:parsed,iaLoading:false});
-  } catch(e) { showToast("Error IA: "+e.message); setState({iaLoading:false}); }
+  } catch(e) { const errMsg = e.message; console.error('IA Error:', errMsg); showToast("Error IA: "+errMsg); setState({iaLoading:false}); }
 }
 
 function confirmarIA() {
