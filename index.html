@@ -83,6 +83,9 @@ button{cursor:pointer;}
 // ── Datos ─────────────────────────────────────────────────────
 const EMPRESAS = ["C2","Nafil","MB","CDM","LCK"];
 const ANTHROPIC_MODEL = "claude-sonnet-4-5";
+const DRIVE_FILE_NAME = "gastos_app_data.json";
+const DRIVE_CLIENT_ID = "1051749004626-h1dohkiummg9knojfl4d6931oqngok4.apps.googleusercontent.com";
+
 const CATEGORIAS_DEFAULT = ["Combustible","Alimentación","Equipamiento","Mantenimiento","Transporte","Servicios","Honorarios","Marketing","Insumos","Otros"];
 
 const MEDIOS = {
@@ -125,6 +128,10 @@ let state = {
   showCats:false, plantillaEnUso:null, sugerencia:null,
   // sync
   syncStatus:"idle",
+  // drive
+  driveToken: localStorage.getItem("drive_token") || null,
+  driveFileId: localStorage.getItem("drive_file_id") || null,
+  pendingSync: false,
 };
 
 function load(key, def) {
@@ -135,6 +142,135 @@ function saveAll() {
   localStorage.setItem("gastos_v5", JSON.stringify(state.gastos));
   localStorage.setItem("cats_v5", JSON.stringify(state.categorias));
   localStorage.setItem("plants_v5", JSON.stringify(state.plantillas));
+  syncToDrive();
+}
+
+// ── Google Drive Sync ─────────────────────────────────────────
+function driveEnabled() { return state.driveToken && DRIVE_CLIENT_ID; }
+
+async function syncToDrive() {
+  if (!driveEnabled()) return;
+  const data = {
+    gastos: state.gastos,
+    categorias: state.categorias,
+    plantillas: state.plantillas,
+    lastSync: new Date().toISOString()
+  };
+  setState({syncStatus:"syncing"}, false);
+  try {
+    const content = JSON.stringify(data);
+    let fileId = state.driveFileId;
+    if (fileId) {
+      // Update existing file
+      await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+        method: "PATCH",
+        headers: { "Authorization": `Bearer ${state.driveToken}`, "Content-Type": "application/json" },
+        body: content
+      });
+    } else {
+      // Create new file
+      const meta = await fetch("https://www.googleapis.com/drive/v3/files", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${state.driveToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: DRIVE_FILE_NAME, mimeType: "application/json" })
+      });
+      const metaData = await meta.json();
+      fileId = metaData.id;
+      await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+        method: "PATCH",
+        headers: { "Authorization": `Bearer ${state.driveToken}`, "Content-Type": "application/json" },
+        body: content
+      });
+      localStorage.setItem("drive_file_id", fileId);
+      state.driveFileId = fileId;
+    }
+    setState({syncStatus:"ok"}, false);
+    setTimeout(()=>setState({syncStatus:"idle"}, false), 3000);
+  } catch(e) {
+    console.error("Drive sync error:", e);
+    setState({syncStatus:"error"}, false);
+    localStorage.setItem("pending_sync", "1");
+  }
+}
+
+async function loadFromDrive() {
+  if (!driveEnabled()) return;
+  setState({syncStatus:"syncing"}, false);
+  try {
+    // Find file by name if we don't have fileId
+    let fileId = state.driveFileId;
+    if (!fileId) {
+      const search = await fetch(`https://www.googleapis.com/drive/v3/files?q=name='${DRIVE_FILE_NAME}'+and+trashed=false&fields=files(id,name)`, {
+        headers: { "Authorization": `Bearer ${state.driveToken}` }
+      });
+      const searchData = await search.json();
+      if (searchData.files && searchData.files.length > 0) {
+        fileId = searchData.files[0].id;
+        localStorage.setItem("drive_file_id", fileId);
+        state.driveFileId = fileId;
+      }
+    }
+    if (!fileId) { setState({syncStatus:"idle"}, false); return; }
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+      headers: { "Authorization": `Bearer ${state.driveToken}` }
+    });
+    if (res.status === 401) { driveLogout(); return; }
+    const data = await res.json();
+    // Merge: Drive wins for gastos (by id), keep local cats/plants if Drive is empty
+    if (data.gastos) {
+      const localIds = new Set(state.gastos.map(g=>g.id));
+      const driveIds = new Set(data.gastos.map(g=>g.id));
+      // Union of both
+      const merged = [...data.gastos];
+      state.gastos.forEach(g=>{ if(!driveIds.has(g.id)) merged.push(g); });
+      state.gastos = merged;
+      localStorage.setItem("gastos_v5", JSON.stringify(state.gastos));
+    }
+    if (data.categorias && data.categorias.length) {
+      state.categorias = data.categorias;
+      localStorage.setItem("cats_v5", JSON.stringify(state.categorias));
+    }
+    if (data.plantillas && data.plantillas.length) {
+      state.plantillas = data.plantillas;
+      localStorage.setItem("plants_v5", JSON.stringify(state.plantillas));
+    }
+    setState({syncStatus:"ok"});
+    setTimeout(()=>setState({syncStatus:"idle"}, false), 3000);
+  } catch(e) {
+    console.error("Drive load error:", e);
+    setState({syncStatus:"error"}, false);
+  }
+}
+
+function driveLogin() {
+  if (!DRIVE_CLIENT_ID) { showToast("⚠ Configurá el Client ID de Google"); return; }
+  const scope = encodeURIComponent("https://www.googleapis.com/auth/drive.file");
+  const redirect = encodeURIComponent(window.location.origin + window.location.pathname);
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${DRIVE_CLIENT_ID}&redirect_uri=${redirect}&response_type=token&scope=${scope}`;
+  window.location.href = url;
+}
+
+function driveLogout() {
+  state.driveToken = null;
+  state.driveFileId = null;
+  localStorage.removeItem("drive_token");
+  localStorage.removeItem("drive_file_id");
+  setState({syncStatus:"idle"});
+  showToast("Drive desconectado");
+}
+
+function handleOAuthCallback() {
+  const hash = window.location.hash;
+  if (!hash) return;
+  const params = new URLSearchParams(hash.replace("#",""));
+  const token = params.get("access_token");
+  if (token) {
+    state.driveToken = token;
+    localStorage.setItem("drive_token", token);
+    window.history.replaceState(null, "", window.location.pathname);
+    showToast("✓ Drive conectado");
+    loadFromDrive();
+  }
 }
 
 function hoy() { return new Date().toISOString().split("T")[0]; }
@@ -195,7 +331,10 @@ function buildApp() {
 }
 
 function buildHeader() {
-  const syncMap = {idle:"",syncing:"<span style='color:#F59E0B;animation:spin 1s linear infinite;display:inline-block'>⟳</span>",ok:"<span style='color:#34D399'>✓ Drive</span>",error:"<span style='color:#EF4444'>✗ Drive</span>",offline:"<span style='color:#8888A0'>◌ offline</span>"};
+  const driveBtn = state.driveToken
+    ? `<button onclick="driveLogout()" style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;font-family:monospace;padding:3px 8px;cursor:pointer">Drive ✕</button>`
+    : `<button onclick="driveLogin()" style="background:none;border:1px solid #34D399;border-radius:6px;color:#34D399;font-size:11px;font-family:monospace;padding:3px 8px;cursor:pointer">+ Drive</button>`;
+  const syncMap = {idle:driveBtn,syncing:"<span style='color:#F59E0B;animation:spin 1s linear infinite;display:inline-block'>⟳</span>",ok:"<span style='color:#34D399'>✓ Drive</span>",error:"<span style='color:#EF4444'>✗ Drive</span>",offline:"<span style='color:#8888A0'>◌ offline</span>"};
   const badges = EMPRESAS.map(e=>`<span style="font-family:monospace;font-size:11px;padding:3px 10px;border-radius:4px;font-weight:500;background:${EMP[e].bg};color:${EMP[e].text};border:1px solid ${EMP[e].border}44">${e}</span>`).join("");
   return `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
