@@ -763,7 +763,7 @@ function setModalSubMedio(s) { state._modalSubMedio=s; render(); }
 
 function onDescChange(v) {
   state.desc = v;
-  // Sugerencia automática
+  // Sugerencia automática - sin re-render para no perder foco
   let sug = null;
   if (v.length >= 3) {
     const key = v.toLowerCase().trim();
@@ -772,8 +772,14 @@ function onDescChange(v) {
   }
   const prevSug = state.sugerencia;
   state.sugerencia = sug;
-  // Solo re-render si cambió la sugerencia (no por cada letra)
-  if ((prevSug && prevSug.id) !== (sug && sug.id)) render();
+  // Solo re-render si cambió la sugerencia, y restaurar foco después
+  if ((prevSug && prevSug.id) !== (sug && sug.id)) {
+    const el = document.getElementById("inp-desc");
+    const pos = el ? el.selectionStart : null;
+    render();
+    const el2 = document.getElementById("inp-desc");
+    if (el2) { el2.focus(); if (pos !== null) { try { el2.setSelectionRange(pos, pos); } catch(e){} } }
+  }
 }
 
 function usarSugerencia() { setState({plantillaEnUso:state.sugerencia}); clearModalState(); }
