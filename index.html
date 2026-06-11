@@ -216,14 +216,9 @@ async function loadFromDrive() {
     });
     if (res.status === 401) { driveLogout(); return; }
     const data = await res.json();
-    // Merge: Drive wins for gastos (by id), keep local cats/plants if Drive is empty
+    // Drive manda: los datos de Drive reemplazan los locales completamente
     if (data.gastos) {
-      const localIds = new Set(state.gastos.map(g=>g.id));
-      const driveIds = new Set(data.gastos.map(g=>g.id));
-      // Union of both
-      const merged = [...data.gastos];
-      state.gastos.forEach(g=>{ if(!driveIds.has(g.id)) merged.push(g); });
-      state.gastos = merged;
+      state.gastos = data.gastos;
       localStorage.setItem("gastos_v5", JSON.stringify(state.gastos));
     }
     if (data.categorias && data.categorias.length) {
