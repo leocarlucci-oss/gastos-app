@@ -1035,7 +1035,9 @@ function exportarExcel() {
 }
 
 // ── Init ──────────────────────────────────────────────────────
+handleOAuthCallback();
 render();
+if (driveEnabled()) loadFromDrive();
 </script>
 </body>
 </html>
