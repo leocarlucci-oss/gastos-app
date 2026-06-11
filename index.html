@@ -463,23 +463,32 @@ function buildLista() {
 }
 
 function buildResumen() {
+  const MONEDAS = ["ARS","U$S","Euros","CLP"];
   const cards = EMPRESAS.map(e=>{
     const eg = state.gastos.filter(g=>g.empresa===e);
-    const total = eg.filter(g=>!g.moneda||g.moneda==="ARS").reduce((s,g)=>s+g.monto,0);
     const c = EMP[e];
+    const totalesPorMoneda = MONEDAS.map(mon=>{
+      const t = eg.filter(g=>(g.moneda||"ARS")===mon).reduce((s,g)=>s+g.monto,0);
+      return t > 0 ? `<div style="font-family:monospace;font-size:14px;font-weight:500;color:${c.text}">${fmtMonto(t,mon)}</div>` : "";
+    }).filter(Boolean).join("");
     return `<div class="res-card" style="border:1px solid ${c.border}55;background:${c.bg}">
-      <div style="font-size:10px;font-family:monospace;color:var(--muted);text-transform:uppercase">${e}</div>
-      <div style="font-size:17px;font-family:monospace;font-weight:500;color:${c.text};margin-top:4px">${fmtMonto(total,"ARS")}</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:2px">${eg.length} gasto${eg.length!==1?"s":""}</div>
+      <div style="font-size:10px;font-family:monospace;color:var(--muted);text-transform:uppercase;margin-bottom:6px">${e}</div>
+      ${totalesPorMoneda || `<div style="font-size:12px;color:var(--muted)">Sin gastos</div>`}
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">${eg.length} gasto${eg.length!==1?"s":""}</div>
     </div>`;
   }).join("");
-  const totalARS = state.gastos.filter(g=>!g.moneda||g.moneda==="ARS").reduce((s,g)=>s+g.monto,0);
+  const totalesGlobal = MONEDAS.map(mon=>{
+    const t = state.gastos.filter(g=>(g.moneda||"ARS")===mon).reduce((s,g)=>s+g.monto,0);
+    return t > 0 ? `<div style="margin-bottom:8px">
+      <div class="label">${mon}</div>
+      <div style="font-family:monospace;font-size:24px;font-weight:500;color:var(--accent)">${fmtMonto(t,mon)}</div>
+    </div>` : "";
+  }).filter(Boolean).join("");
   return `<div class="panel">
     <div class="res-grid">${cards}</div>
     <div style="margin-bottom:20px">
-      <div class="label">Total ARS</div>
-      <div style="font-family:monospace;font-size:26px;font-weight:500;color:var(--accent)">${fmtMonto(totalARS,"ARS")}</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:2px">${state.gastos.length} gastos registrados</div>
+      ${totalesGlobal}
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">${state.gastos.length} gastos registrados</div>
     </div>
     <button onclick="exportarExcel()" style="width:100%;padding:13px;background:linear-gradient(135deg,#065F46,#059669);color:white;border:none;border-radius:8px;font-size:14px;font-weight:600">⬇ Exportar a Excel</button>
   </div>`;
