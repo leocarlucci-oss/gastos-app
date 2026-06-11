@@ -9,7 +9,6 @@
 <meta name="apple-mobile-web-app-title" content="Gastos">
 <title>Gestor de Gastos</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
@@ -245,20 +244,30 @@ async function loadFromDrive() {
 
 function driveLogin() {
   if (!DRIVE_CLIENT_ID) { showToast("⚠ Configurá el Client ID de Google"); return; }
-  if (typeof google === "undefined") { showToast("⚠ Cargando Google..."); return; }
-  const client = google.accounts.oauth2.initTokenClient({
-    client_id: DRIVE_CLIENT_ID,
-    scope: "https://www.googleapis.com/auth/drive.file",
-    callback: (resp) => {
-      if (resp.error) { showToast("Error: " + resp.error); return; }
-      state.driveToken = resp.access_token;
-      localStorage.setItem("drive_token", resp.access_token);
-      showToast("✓ Drive conectado");
-      render();
-      loadFromDrive();
-    }
-  });
-  client.requestAccessToken();
+  const scope = encodeURIComponent("https://www.googleapis.com/auth/drive.file");
+  const origin = encodeURIComponent(window.location.origin + window.location.pathname);
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${DRIVE_CLIENT_ID}&redirect_uri=${origin}&response_type=token&scope=${scope}&prompt=select_account`;
+  const popup = window.open(url, "driveAuth", "width=500,height=600,left=200,top=100");
+  // Poll for token in URL hash
+  const poll = setInterval(() => {
+    try {
+      if (!popup || popup.closed) { clearInterval(poll); return; }
+      const hash = popup.location.hash;
+      if (hash && hash.includes("access_token")) {
+        clearInterval(poll);
+        popup.close();
+        const params = new URLSearchParams(hash.replace("#",""));
+        const token = params.get("access_token");
+        if (token) {
+          state.driveToken = token;
+          localStorage.setItem("drive_token", token);
+          showToast("✓ Drive conectado");
+          render();
+          loadFromDrive();
+        }
+      }
+    } catch(e) { /* cross-origin, ignore */ }
+  }, 500);
 }
 
 function driveLogout() {
@@ -271,7 +280,17 @@ function driveLogout() {
 }
 
 function handleOAuthCallback() {
-  // Handled by Google Identity Services callback
+  const hash = window.location.hash;
+  if (!hash) return;
+  const params = new URLSearchParams(hash.replace("#",""));
+  const token = params.get("access_token");
+  if (token) {
+    state.driveToken = token;
+    localStorage.setItem("drive_token", token);
+    window.history.replaceState(null, "", window.location.pathname);
+    showToast("✓ Drive conectado");
+    loadFromDrive();
+  }
 }
 
 function hoy() { return new Date().toISOString().split("T")[0]; }
