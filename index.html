@@ -367,7 +367,7 @@ function buildIA() {
       </div>
       <div class="field"><span class="label">Fecha</span><input type="date" value="${eF}" onchange="state._iaFecha=this.value"></div>
       <div class="field"><span class="label">Medio de pago</span>${buildMedioPicker(eMed,eSub,"setIAMedio","setIASubMedio")}</div>
-      <div class="field"><span class="label">Categoría</span><select onchange="state._iaCat=this.value"><option value="">Seleccioná...</option>${catOpts}</select></div>
+      <div class="field"><span class="label">Categoría</span><select onchange="setIACat(this.value)"><option value="">Seleccioná...</option>${catOpts}</select></div>
       <div class="field"><span class="label">Nota</span><input value="${esc(eNot)}" oninput="state._iaNota=this.value" placeholder="Aclaración..."></div>
       ${state.iaSplitMode?`<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">${state.iaSplitParts.map(p=>`<div style="font-size:13px;line-height:1.9"><span style="color:${EMP[p.empresa]?.text||"var(--muted)"}>${p.empresa||"?"}</span><span style="color:var(--muted)"> → ${p.pct}% = </span>${eM?`${eMon} ${Number(parseFloat(eM)*p.pct/100).toLocaleString("es-AR")}`:"—"}</div>`).join("")}</div>`:""}
       <button class="btn-primary" onclick="confirmarIA()" style="margin-top:4px">${state.iaSplitMode?`Confirmar ${state.iaSplitParts.length} gastos`:"Confirmar y agregar"}</button>
@@ -763,6 +763,7 @@ async function procesarIA() {
 }
 
 function setIAMedio(m){state._iaMedio=m;state._iaSubMedio=null;render();}
+function setIACat(v){state._iaCat=v;render();}
 function setIASubMedio(s){state._iaSubMedio=s;render();}
 function cancelarIA(){
   ["_iaDesc","_iaTitular","_iaMonto","_iaMoneda","_iaFecha","_iaMedio","_iaSubMedio","_iaCat","_iaNota"].forEach(k=>delete state[k]);
