@@ -608,6 +608,7 @@ function buildLista() {
         ${g.moneda&&g.moneda!=="ARS"?`<div style="font-size:10px;color:var(--muted)">${g.moneda}</div>`:""}
       </div>
       <button class="btn-icon" onclick="guardarPlantilla(${g.id})" title="Guardar como plantilla">★</button>
+      <button class="btn-icon" onclick="editarGasto(${g.id})" title="Editar">✎</button>
       <button class="btn-icon" onclick="eliminarGasto(${g.id})">✕</button>
     </div>`).join("") : `<div style="text-align:center;padding:32px;color:var(--muted);font-size:13px">Sin gastos aún.</div>`;
 
