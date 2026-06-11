@@ -726,7 +726,7 @@ async function procesarIA() {
     } else {
       messages=[{role:"user",content:`Del texto: "${state.textoLibre.trim()}". ${prompt}`}];
     }
-    const res = await fetch("/.netlify/functions/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:ANTHROPIC_MODEL,max_tokens:500,messages})});
+    const res = await fetch("/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:ANTHROPIC_MODEL,max_tokens:500,messages})});
     const data = await res.json();
     if (!data.content) { const errDetail = data.error ? data.error.message || JSON.stringify(data.error) : JSON.stringify(data); throw new Error(errDetail); } const raw = data.content.map(c=>c.text||"").join("").trim();
     const clean = raw.replace(/```json|```/g,"").trim();
