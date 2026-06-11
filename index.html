@@ -114,6 +114,7 @@ let state = {
   splitMode:false, splitParts:[{empresa:null,pct:50},{empresa:null,pct:50}],
   // ia
   empIA:null, textoLibre:"", iaLoading:false, iaResult:null,
+  _iaTitular:undefined,
   imgB64:null, imgPreview:null,
   iaSplitMode:false, iaSplitParts:[{empresa:null,pct:50},{empresa:null,pct:50}],
   // voz
@@ -305,13 +306,13 @@ function buildCargar() {
       ? `<div class="field"><span class="label">Empresa</span>${buildEmpGrid(state.empresa,"setEmpresa")}</div>`
       : `<div class="field"><span class="label">División</span>${buildSplitEditor(state.splitParts,"updateSplit","addSplit","eqSplit")}</div>`}
     <div class="field">
+      <span class="label">Titular / Comercio</span>
+      <input id="inp-titular" value="${esc(state.titular)}" oninput="state.titular=this.value" placeholder="Ej: YPF, Mercado Libre, Farmacity...">
+    </div>
+    <div class="field">
       <span class="label">Descripción</span>
       <input id="inp-desc" value="${esc(state.desc)}" oninput="onDescChange(this.value)" placeholder="Ej: Cena, combustible, repuesto...">
       ${sugHTML}
-    </div>
-    <div class="field">
-      <span class="label">Titular / Comercio</span>
-      <input id="inp-titular" value="${esc(state.titular)}" oninput="state.titular=this.value" placeholder="Ej: YPF, Mercado Libre, Farmacity...">
     </div>
     <div class="row2">
       <div class="field"><span class="label">Monto</span><input id="inp-monto" type="number" value="${state.monto}" oninput="setState({monto:this.value},false)" placeholder="0.00" step="0.01"></div>
@@ -358,6 +359,7 @@ function buildIA() {
     const monOpts = ["ARS","U$S","Euros","CLP"].map(m=>`<option${eMon===m?" selected":""}>${m}</option>`).join("");
     resultHTML = `<div class="ia-result">
       <div style="color:var(--accent);font-weight:600;margin-bottom:12px">✓ Revisá y editá</div>
+      <div class="field"><span class="label">Titular / Comercio</span><input value="${esc(state._iaTitular!==undefined?state._iaTitular:(r.titular||''))}" oninput="state._iaTitular=this.value" placeholder="Ej: YPF, Mercado Libre..."></div>
       <div class="field"><span class="label">Descripción</span><input value="${esc(eD)}" oninput="state._iaDesc=this.value"></div>
       <div class="row2 field">
         <div><span class="label">Monto</span><input type="number" value="${eM}" oninput="state._iaMonto=this.value" step="0.01"></div>
@@ -735,7 +737,7 @@ async function procesarIA() {
   if(!state.iaSplitMode&&!state.empIA) return showToast("⚠ Seleccioná empresa");
   setState({iaLoading:true,iaResult:null});
   try {
-    const prompt = (state.textoLibre?`Texto: "${state.textoLibre}". `:"") + `Extraé: desc, monto (número), moneda (ARS/U$S/Euros/CLP), fecha (YYYY-MM-DD o null), medio (Tx/TC ARS/TC U$S/TC EUR/Cash/MP), subMedio (o null), categoria (una de: ${state.categorias.join("/")}). Solo JSON sin backticks.`;
+    const prompt = (state.textoLibre?`Texto: "${state.textoLibre}". `:"") + `Extraé: titular (nombre del comercio/proveedor), desc (concepto del gasto), monto (número), moneda (ARS/U$S/Euros/CLP), fecha (YYYY-MM-DD o null), medio (Tx/TC ARS/TC U$S/TC EUR/Cash/MP), subMedio (o null), categoria (una de: ${state.categorias.join("/")}). Solo JSON sin backticks.`;
     let messages;
     if(state.imgB64) {
       messages=[{role:"user",content:[{type:"image",source:{type:"base64",media_type:"image/jpeg",data:state.imgB64}},{type:"text",text:prompt}]}];
@@ -763,13 +765,14 @@ async function procesarIA() {
 function setIAMedio(m){state._iaMedio=m;state._iaSubMedio=null;render();}
 function setIASubMedio(s){state._iaSubMedio=s;render();}
 function cancelarIA(){
-  ["_iaDesc","_iaMonto","_iaMoneda","_iaFecha","_iaMedio","_iaSubMedio","_iaCat","_iaNota"].forEach(k=>delete state[k]);
+  ["_iaDesc","_iaTitular","_iaMonto","_iaMoneda","_iaFecha","_iaMedio","_iaSubMedio","_iaCat","_iaNota"].forEach(k=>delete state[k]);
   setState({iaResult:null});
 }
 function confirmarIA() {
   const r = state.iaResult;
   if(!r) return;
   const base = {
+    titular: (state._iaTitular!==undefined?state._iaTitular:(r.titular||"")),
     desc: (state._iaDesc!==undefined?state._iaDesc:r.desc)||"Sin descripción",
     monto: parseFloat(state._iaMonto!==undefined?state._iaMonto:r.monto)||0,
     moneda: state._iaMoneda!==undefined?state._iaMoneda:(r.moneda||"ARS"),
@@ -789,7 +792,7 @@ function confirmarIA() {
     showToast("✓ Gasto agregado");
   }
   saveAll();
-  ["_iaDesc","_iaMonto","_iaMoneda","_iaFecha","_iaMedio","_iaSubMedio","_iaCat","_iaNota"].forEach(k=>delete state[k]);
+  ["_iaDesc","_iaTitular","_iaMonto","_iaMoneda","_iaFecha","_iaMedio","_iaSubMedio","_iaCat","_iaNota"].forEach(k=>delete state[k]);
   setState({iaResult:null,imgB64:null,imgPreview:null,textoLibre:""});
 }
 
