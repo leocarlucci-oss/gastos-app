@@ -109,7 +109,7 @@ let state = {
   categorias: load("cats_v5", CATEGORIAS_DEFAULT),
   plantillas: load("plants_v5", []),
   // form
-  empresa: null, desc:"", monto:"", moneda:"ARS", fecha:hoy(),
+  empresa: null, desc:"", titular:"", monto:"", moneda:"ARS", fecha:hoy(),
   medio:null, subMedio:null, categoria:"", nota:"",
   splitMode:false, splitParts:[{empresa:null,pct:50},{empresa:null,pct:50}],
   // ia
@@ -309,6 +309,10 @@ function buildCargar() {
       <input id="inp-desc" value="${esc(state.desc)}" oninput="onDescChange(this.value)" placeholder="Ej: Cena, combustible, repuesto...">
       ${sugHTML}
     </div>
+    <div class="field">
+      <span class="label">Titular / Comercio</span>
+      <input id="inp-titular" value="${esc(state.titular)}" oninput="state.titular=this.value" placeholder="Ej: YPF, Mercado Libre, Farmacity...">
+    </div>
     <div class="row2">
       <div class="field"><span class="label">Monto</span><input id="inp-monto" type="number" value="${state.monto}" oninput="setState({monto:this.value},false)" placeholder="0.00" step="0.01"></div>
       <div class="field"><span class="label">Moneda</span>
@@ -448,7 +452,7 @@ function buildLista() {
       <div class="dot" style="background:${EMP[g.empresa]?.border||"#666"}"></div>
       <div style="flex:1;min-width:0">
         <div class="gasto-desc">${esc(g.desc)}</div>
-        <div class="gasto-meta">${g.fecha.split("-").reverse().join("/")} · ${g.empresa} · ${g.medio||"—"}</div>
+        <div class="gasto-meta">${g.fecha.split("-").reverse().join("/")} · ${g.empresa} · ${g.medio||"—"}${g.titular?" · "+g.titular:""}</div>
         ${g.nota?`<div class="gasto-nota">${esc(g.nota)}</div>`:""}
       </div>
       <div class="gasto-monto">
@@ -594,7 +598,10 @@ function onDescChange(v) {
     sug = state.gastos.find(g => g.desc && (g.desc.toLowerCase().includes(key) || key.includes(g.desc.toLowerCase().trim().slice(0,4))));
     if (sug && sug.desc.toLowerCase() === v.toLowerCase()) sug = null;
   }
-  setState({sugerencia:sug});
+  const prevSug = state.sugerencia;
+  state.sugerencia = sug;
+  // Solo re-render si cambió la sugerencia (no por cada letra)
+  if ((prevSug && prevSug.id) !== (sug && sug.id)) render();
 }
 
 function usarSugerencia() { setState({plantillaEnUso:state.sugerencia}); clearModalState(); }
@@ -613,7 +620,7 @@ function agregarGasto() {
   const desc = state.desc.trim();
   if(!desc) return showToast("⚠ Escribí una descripción");
   if(!state.monto||parseFloat(state.monto)<=0) return showToast("⚠ Ingresá un monto válido");
-  const base = {desc,monto:parseFloat(state.monto),moneda:state.moneda,fecha:state.fecha,medio:medioStr(state.medio,state.subMedio)||"No especificado",categoria:state.categoria||"Sin categoría",nota:state.nota.trim()};
+  const base = {desc,titular:state.titular.trim(),monto:parseFloat(state.monto),moneda:state.moneda,fecha:state.fecha,medio:medioStr(state.medio,state.subMedio)||"No especificado",categoria:state.categoria||"Sin categoría",nota:state.nota.trim()};
   if(state.splitMode) {
     if(splitSum(state.splitParts)!==100) return showToast("⚠ Los % deben sumar 100");
     if(state.splitParts.some(p=>!p.empresa)) return showToast("⚠ Asigná empresa a cada parte");
@@ -626,7 +633,7 @@ function agregarGasto() {
     showToast("✓ Gasto agregado");
   }
   saveAll();
-  setState({desc:"",monto:"",fecha:hoy(),nota:"",categoria:"",medio:null,subMedio:null,empresa:null,moneda:"ARS",sugerencia:null});
+  setState({desc:"",titular:"",monto:"",fecha:hoy(),nota:"",categoria:"",medio:null,subMedio:null,empresa:null,moneda:"ARS",sugerencia:null});
 }
 
 function eliminarGasto(id) { state.gastos=state.gastos.filter(g=>g.id!==id); saveAll(); render(); }
@@ -825,16 +832,16 @@ function guardarEdicion() {
 function exportarExcel() {
   if(!state.gastos.length) return showToast("No hay gastos para exportar");
   const wb = XLSX.utils.book_new();
-  const headers = ["Fecha","Empresa","Descripción","Categoría","Medio de pago","Moneda","Monto","Nota"];
+  const headers = ["Fecha","Empresa","Titular/Comercio","Descripción","Categoría","Medio de pago","Moneda","Monto","Nota"];
   EMPRESAS.forEach(emp=>{
-    const rows=state.gastos.filter(g=>g.empresa===emp).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(g=>[g.fecha,g.empresa,g.desc,g.categoria,g.medio,g.moneda||"ARS",g.monto,g.nota||""]);
+    const rows=state.gastos.filter(g=>g.empresa===emp).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(g=>[g.fecha,g.empresa,g.titular||"",g.desc,g.categoria,g.medio,g.moneda||"ARS",g.monto,g.nota||""]);
     const ws=XLSX.utils.aoa_to_sheet([headers,...rows]);
-    ws["!cols"]=[12,10,30,18,22,8,12,25].map(w=>({wch:w}));
+    ws["!cols"]=[12,10,22,30,18,22,8,12,25].map(w=>({wch:w}));
     XLSX.utils.book_append_sheet(wb,ws,emp);
   });
-  const allRows=[...state.gastos].sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(g=>[g.fecha,g.empresa,g.desc,g.categoria,g.medio,g.moneda||"ARS",g.monto,g.nota||""]);
+  const allRows=[...state.gastos].sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(g=>[g.fecha,g.empresa,g.titular||"",g.desc,g.categoria,g.medio,g.moneda||"ARS",g.monto,g.nota||""]);
   const wsAll=XLSX.utils.aoa_to_sheet([headers,...allRows]);
-  wsAll["!cols"]=[12,10,30,18,22,8,12,25].map(w=>({wch:w}));
+  wsAll["!cols"]=[12,10,22,30,18,22,8,12,25].map(w=>({wch:w}));
   XLSX.utils.book_append_sheet(wb,wsAll,"Todos");
   XLSX.writeFile(wb,`gastos_${hoy()}.xlsx`);
   showToast("✓ Excel exportado");
