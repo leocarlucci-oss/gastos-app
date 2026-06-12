@@ -142,6 +142,7 @@ function saveAll() {
   localStorage.setItem("gastos_v5", JSON.stringify(state.gastos));
   localStorage.setItem("cats_v5", JSON.stringify(state.categorias));
   localStorage.setItem("plants_v5", JSON.stringify(state.plantillas));
+  localStorage.setItem("local_modified", String(Date.now()));
   syncToDrive();
 }
 
@@ -160,37 +161,49 @@ async function syncToDrive() {
   try {
     const content = JSON.stringify(data);
     let fileId = state.driveFileId;
+    let res;
     if (fileId) {
-      // Update existing file
-      await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+      res = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
         method: "PATCH",
         headers: { "Authorization": `Bearer ${state.driveToken}`, "Content-Type": "application/json" },
         body: content
       });
     } else {
-      // Create new file
       const meta = await fetch("https://www.googleapis.com/drive/v3/files", {
         method: "POST",
         headers: { "Authorization": `Bearer ${state.driveToken}`, "Content-Type": "application/json" },
         body: JSON.stringify({ name: DRIVE_FILE_NAME, mimeType: "application/json" })
       });
+      if (meta.status === 401) { handleTokenExpired(); return; }
       const metaData = await meta.json();
       fileId = metaData.id;
-      await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+      res = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
         method: "PATCH",
         headers: { "Authorization": `Bearer ${state.driveToken}`, "Content-Type": "application/json" },
         body: content
       });
-      localStorage.setItem("drive_file_id", fileId);
-      state.driveFileId = fileId;
+      if (res.ok) {
+        localStorage.setItem("drive_file_id", fileId);
+        state.driveFileId = fileId;
+      }
     }
+    if (res.status === 401) { handleTokenExpired(); return; }
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    localStorage.removeItem("pending_sync");
     setState({syncStatus:"ok"}, false);
-    setTimeout(()=>setState({syncStatus:"idle"}, false), 3000);
+    setTimeout(()=>{ if(state.syncStatus==="ok") setState({syncStatus:"idle"}, false); }, 3000);
   } catch(e) {
     console.error("Drive sync error:", e);
     setState({syncStatus:"error"}, false);
     localStorage.setItem("pending_sync", "1");
   }
+}
+
+function handleTokenExpired() {
+  state.driveToken = null;
+  localStorage.removeItem("drive_token");
+  setState({syncStatus:"expired"});
+  showToast("⚠ Sesión de Drive vencida, reconectá");
 }
 
 async function loadFromDrive() {
@@ -214,23 +227,29 @@ async function loadFromDrive() {
     const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
       headers: { "Authorization": `Bearer ${state.driveToken}` }
     });
-    if (res.status === 401) { driveLogout(); return; }
+    if (res.status === 401) { handleTokenExpired(); return; }
     const data = await res.json();
-    // Drive manda: los datos de Drive reemplazan los locales completamente
-    if (data.gastos) {
-      state.gastos = data.gastos;
-      localStorage.setItem("gastos_v5", JSON.stringify(state.gastos));
-    }
-    if (data.categorias && data.categorias.length) {
-      state.categorias = data.categorias;
-      localStorage.setItem("cats_v5", JSON.stringify(state.categorias));
-    }
-    if (data.plantillas && data.plantillas.length) {
-      state.plantillas = data.plantillas;
-      localStorage.setItem("plants_v5", JSON.stringify(state.plantillas));
+    // Si hay cambios locales pendientes de subir (pending_sync), no pisar con Drive todavía
+    const hasPending = localStorage.getItem("pending_sync") === "1";
+    if (!hasPending) {
+      if (data.gastos) {
+        state.gastos = data.gastos;
+        localStorage.setItem("gastos_v5", JSON.stringify(state.gastos));
+      }
+      if (data.categorias && data.categorias.length) {
+        state.categorias = data.categorias;
+        localStorage.setItem("cats_v5", JSON.stringify(state.categorias));
+      }
+      if (data.plantillas && data.plantillas.length) {
+        state.plantillas = data.plantillas;
+        localStorage.setItem("plants_v5", JSON.stringify(state.plantillas));
+      }
+    } else {
+      // Hay cambios locales sin subir: subimos los locales en vez de bajar Drive
+      syncToDrive();
     }
     setState({syncStatus:"ok"});
-    setTimeout(()=>setState({syncStatus:"idle"}, false), 3000);
+    setTimeout(()=>{ if(state.syncStatus==="ok") setState({syncStatus:"idle"}, false); }, 3000);
   } catch(e) {
     console.error("Drive load error:", e);
     setState({syncStatus:"error"}, false);
@@ -327,15 +346,23 @@ function buildApp() {
 }
 
 function buildHeader() {
-  const driveBtn = state.driveToken
-    ? `<button onclick="driveLogout()" style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;font-family:monospace;padding:3px 8px;cursor:pointer">Drive ✕</button>`
-    : `<button onclick="driveLogin()" style="background:none;border:1px solid #34D399;border-radius:6px;color:#34D399;font-size:11px;font-family:monospace;padding:3px 8px;cursor:pointer">+ Drive</button>`;
-  const syncMap = {idle:driveBtn,syncing:"<span style='color:#F59E0B;animation:spin 1s linear infinite;display:inline-block'>⟳</span>",ok:"<span style='color:#34D399'>✓ Drive</span>",error:"<span style='color:#EF4444'>✗ Drive</span>",offline:"<span style='color:#8888A0'>◌ offline</span>"};
+  let driveIndicator;
+  if (!state.driveToken) {
+    driveIndicator = `<button onclick="driveLogin()" style="background:none;border:1px solid #34D399;border-radius:6px;color:#34D399;font-size:11px;font-family:monospace;padding:3px 8px;cursor:pointer">+ Drive</button>`;
+  } else if (state.syncStatus === "syncing") {
+    driveIndicator = `<span style="color:#F59E0B;font-family:monospace;font-size:11px;display:inline-flex;align-items:center;gap:4px"><span style="animation:spin 1s linear infinite;display:inline-block">⟳</span> Sincronizando</span>`;
+  } else if (state.syncStatus === "error") {
+    driveIndicator = `<button onclick="syncToDrive()" style="background:none;border:1px solid #EF4444;border-radius:6px;color:#EF4444;font-size:11px;font-family:monospace;padding:3px 8px;cursor:pointer" title="Reintentar">✗ Error sync</button>`;
+  } else if (state.syncStatus === "expired") {
+    driveIndicator = `<button onclick="driveLogin()" style="background:none;border:1px solid #F59E0B;border-radius:6px;color:#F59E0B;font-size:11px;font-family:monospace;padding:3px 8px;cursor:pointer">⚠ Reconectar</button>`;
+  } else {
+    driveIndicator = `<button onclick="driveLogout()" style="background:none;border:1px solid #34D399;border-radius:6px;color:#34D399;font-size:11px;font-family:monospace;padding:3px 8px;cursor:pointer" title="Conectado - Tocar para desconectar">✓ Drive</button>`;
+  }
   const badges = EMPRESAS.map(e=>`<span style="font-family:monospace;font-size:11px;padding:3px 10px;border-radius:4px;font-weight:500;background:${EMP[e].bg};color:${EMP[e].text};border:1px solid ${EMP[e].border}44">${e}</span>`).join("");
   return `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
       <div style="font-family:monospace;font-size:15px;font-weight:500;letter-spacing:-.5px">// GESTOR DE GASTOS</div>
-      <span class="sync-badge">${syncMap[state.syncStatus]||""}</span>
+      <span class="sync-badge">${driveIndicator}</span>
     </div>
     <div style="font-family:monospace;font-size:11px;color:var(--muted);margin-bottom:12px">organizador de egresos por empresa</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px">${badges}</div>
