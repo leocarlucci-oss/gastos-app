@@ -718,8 +718,8 @@ function buildLista() {
     <div class="gasto-item">
       <div class="dot" style="background:${EMP[g.empresa]?.border||"#666"}"></div>
       <div style="flex:1;min-width:0">
-        <div class="gasto-desc">${esc(g.desc)}</div>
-        <div class="gasto-meta">${g.fecha.split("-").reverse().join("/")} · ${g.empresa} · ${g.medio||"—"}${g.titular?" · "+g.titular:""}</div>
+        <div class="gasto-desc">${g.titular?esc(g.titular):esc(g.desc)}</div>
+        <div class="gasto-meta">${g.fecha.split("-").reverse().join("/")} · ${g.empresa} · ${g.medio||"—"}${g.titular?" · "+esc(g.desc):""}</div>
         ${g.nota?`<div class="gasto-nota">${esc(g.nota)}</div>`:""}
       </div>
       <div class="gasto-monto">
