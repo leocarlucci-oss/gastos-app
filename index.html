@@ -1132,6 +1132,11 @@ function exportarExcel() {
 }
 
 // ── Init ──────────────────────────────────────────────────────
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/service-worker.js").catch(e => console.error("SW error:", e));
+  });
+}
 handleOAuthCallback();
 render();
 if (driveEnabled()) loadFromDrive();
