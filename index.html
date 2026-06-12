@@ -1135,6 +1135,16 @@ function exportarExcel() {
 handleOAuthCallback();
 render();
 if (driveEnabled()) loadFromDrive();
+// Sync periódico cada 2 minutos si hay conexión activa con Drive
+setInterval(() => {
+  if (driveEnabled() && state.syncStatus !== "syncing") loadFromDrive();
+}, 2 * 60 * 1000);
+// Sync al volver a la pestaña/app (visibilitychange)
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && driveEnabled() && state.syncStatus !== "syncing") {
+    loadFromDrive();
+  }
+});
 </script>
 </body>
 </html>
