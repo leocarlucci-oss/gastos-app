@@ -130,6 +130,8 @@ let state = {
   syncStatus:"idle",
   // drive
   driveToken: localStorage.getItem("drive_token") || null,
+  driveTokenExpiry: parseInt(localStorage.getItem("drive_token_expiry") || "0"),
+  driveRefreshToken: localStorage.getItem("drive_refresh_token") || null,
   driveFileId: localStorage.getItem("drive_file_id") || null,
   pendingSync: false,
 };
@@ -151,6 +153,8 @@ function driveEnabled() { return state.driveToken && DRIVE_CLIENT_ID; }
 
 async function syncToDrive() {
   if (!driveEnabled()) return;
+  const ok = await ensureValidToken();
+  if (!ok) { handleTokenExpired(); return; }
   const data = {
     gastos: state.gastos,
     categorias: state.categorias,
@@ -199,7 +203,12 @@ async function syncToDrive() {
   }
 }
 
-function handleTokenExpired() {
+async function handleTokenExpired() {
+  const refreshed = await refreshDriveToken();
+  if (refreshed) {
+    syncToDrive();
+    return;
+  }
   state.driveToken = null;
   localStorage.removeItem("drive_token");
   setState({syncStatus:"expired"});
@@ -209,6 +218,8 @@ function handleTokenExpired() {
 async function loadFromDrive() {
   if (!driveEnabled()) return;
   setState({syncStatus:"syncing"}, false);
+  const ok = await ensureValidToken();
+  if (!ok) { handleTokenExpired(); return; }
   try {
     // Find file by name if we don't have fileId
     let fileId = state.driveFileId;
@@ -260,32 +271,85 @@ function driveLogin() {
   if (!DRIVE_CLIENT_ID) { showToast("⚠ Configurá el Client ID de Google"); return; }
   const scope = encodeURIComponent("https://www.googleapis.com/auth/drive.file");
   const origin = window.location.origin + window.location.pathname.replace(/\/+$/, '');
-  const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${DRIVE_CLIENT_ID}&redirect_uri=${encodeURIComponent(origin)}&response_type=token&scope=${scope}&prompt=select_account`;
-  // Redirect directo en todos los dispositivos
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${DRIVE_CLIENT_ID}&redirect_uri=${encodeURIComponent(origin)}&response_type=code&access_type=offline&prompt=consent&scope=${scope}`;
   window.location.href = url;
 }
 
 function driveLogout() {
   state.driveToken = null;
+  state.driveRefreshToken = null;
+  state.driveTokenExpiry = 0;
   state.driveFileId = null;
   localStorage.removeItem("drive_token");
+  localStorage.removeItem("drive_token_expiry");
+  localStorage.removeItem("drive_refresh_token");
   localStorage.removeItem("drive_file_id");
   setState({syncStatus:"idle"});
   showToast("Drive desconectado");
 }
 
-function handleOAuthCallback() {
-  const hash = window.location.hash;
-  if (!hash) return;
-  const params = new URLSearchParams(hash.replace("#",""));
-  const token = params.get("access_token");
-  if (token) {
-    state.driveToken = token;
-    localStorage.setItem("drive_token", token);
-    window.history.replaceState(null, "", window.location.pathname);
-    showToast("✓ Drive conectado");
-    loadFromDrive();
+async function handleOAuthCallback() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("code");
+  if (!code) return;
+  const origin = window.location.origin + window.location.pathname.replace(/\/+$/, '');
+  window.history.replaceState(null, "", window.location.pathname);
+  try {
+    const res = await fetch("/auth/google", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, redirect_uri: origin })
+    });
+    const data = await res.json();
+    if (data.access_token) {
+      state.driveToken = data.access_token;
+      state.driveTokenExpiry = Date.now() + (data.expires_in || 3600) * 1000;
+      localStorage.setItem("drive_token", data.access_token);
+      localStorage.setItem("drive_token_expiry", String(state.driveTokenExpiry));
+      if (data.refresh_token) {
+        state.driveRefreshToken = data.refresh_token;
+        localStorage.setItem("drive_refresh_token", data.refresh_token);
+      }
+      showToast("✓ Drive conectado");
+      render();
+      loadFromDrive();
+    } else {
+      showToast("Error conectando Drive: " + (data.error || "desconocido"));
+    }
+  } catch(e) {
+    console.error("OAuth callback error:", e);
+    showToast("Error conectando Drive");
   }
+}
+
+async function refreshDriveToken() {
+  if (!state.driveRefreshToken) return false;
+  try {
+    const res = await fetch("/auth/google", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ grant_type: "refresh_token", refresh_token: state.driveRefreshToken })
+    });
+    const data = await res.json();
+    if (data.access_token) {
+      state.driveToken = data.access_token;
+      state.driveTokenExpiry = Date.now() + (data.expires_in || 3600) * 1000;
+      localStorage.setItem("drive_token", data.access_token);
+      localStorage.setItem("drive_token_expiry", String(state.driveTokenExpiry));
+      return true;
+    }
+  } catch(e) {
+    console.error("Refresh token error:", e);
+  }
+  return false;
+}
+
+async function ensureValidToken() {
+  // Renovar si falta menos de 5 min para expirar
+  if (state.driveToken && state.driveTokenExpiry && Date.now() < state.driveTokenExpiry - 5*60*1000) {
+    return true;
+  }
+  return await refreshDriveToken();
 }
 
 function hoy() { return new Date().toISOString().split("T")[0]; }
