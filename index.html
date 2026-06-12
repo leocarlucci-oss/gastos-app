@@ -133,6 +133,7 @@ let state = {
   driveTokenExpiry: parseInt(localStorage.getItem("drive_token_expiry") || "0"),
   driveRefreshToken: localStorage.getItem("drive_refresh_token") || null,
   driveFileId: localStorage.getItem("drive_file_id") || null,
+  deletedIds: load("deleted_ids_v1", []),
   pendingSync: false,
 };
 
@@ -151,50 +152,123 @@ function saveAll() {
 // ── Google Drive Sync ─────────────────────────────────────────
 function driveEnabled() { return state.driveToken && DRIVE_CLIENT_ID; }
 
+// Mergea gastos de Drive con los locales usando updatedAt y deletedIds (tombstones)
+function mergeGastos(driveGastos, localGastos, driveDeletedIds, localDeletedIds) {
+  const allDeletedIds = new Set([...(driveDeletedIds||[]), ...(localDeletedIds||[])]);
+  const byId = new Map();
+  (driveGastos||[]).forEach(g => byId.set(g.id, g));
+  (localGastos||[]).forEach(g => {
+    const existing = byId.get(g.id);
+    if (!existing) { byId.set(g.id, g); return; }
+    // El más reciente gana (por updatedAt, default 0)
+    const localTime = g.updatedAt || g.id || 0;
+    const driveTime = existing.updatedAt || existing.id || 0;
+    if (localTime >= driveTime) byId.set(g.id, g);
+  });
+  // Remover los que están en deletedIds
+  allDeletedIds.forEach(id => byId.delete(id));
+  return { merged: Array.from(byId.values()), allDeletedIds: Array.from(allDeletedIds) };
+}
+
+async function fetchDriveData() {
+  let fileId = state.driveFileId;
+  if (!fileId) {
+    const search = await fetch(`https://www.googleapis.com/drive/v3/files?q=name='${DRIVE_FILE_NAME}'+and+trashed=false&fields=files(id,name)`, {
+      headers: { "Authorization": `Bearer ${state.driveToken}` }
+    });
+    if (search.status === 401) return { status: 401 };
+    const searchData = await search.json();
+    if (searchData.files && searchData.files.length > 0) {
+      fileId = searchData.files[0].id;
+      localStorage.setItem("drive_file_id", fileId);
+      state.driveFileId = fileId;
+    }
+  }
+  if (!fileId) return { status: 200, data: null };
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+    headers: { "Authorization": `Bearer ${state.driveToken}` }
+  });
+  if (res.status === 401) return { status: 401 };
+  if (!res.ok) return { status: res.status };
+  const data = await res.json();
+  return { status: 200, data, fileId };
+}
+
+async function uploadDriveData(data) {
+  const content = JSON.stringify(data);
+  let fileId = state.driveFileId;
+  let res;
+  if (fileId) {
+    res = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+      method: "PATCH",
+      headers: { "Authorization": `Bearer ${state.driveToken}`, "Content-Type": "application/json" },
+      body: content
+    });
+  } else {
+    const meta = await fetch("https://www.googleapis.com/drive/v3/files", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${state.driveToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: DRIVE_FILE_NAME, mimeType: "application/json" })
+    });
+    if (meta.status === 401) return { status: 401 };
+    const metaData = await meta.json();
+    fileId = metaData.id;
+    res = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+      method: "PATCH",
+      headers: { "Authorization": `Bearer ${state.driveToken}`, "Content-Type": "application/json" },
+      body: content
+    });
+    if (res.ok) {
+      localStorage.setItem("drive_file_id", fileId);
+      state.driveFileId = fileId;
+    }
+  }
+  return { status: res.status, ok: res.ok };
+}
+
 async function syncToDrive() {
   if (!driveEnabled()) return;
   const ok = await ensureValidToken();
   if (!ok) { handleTokenExpired(); return; }
-  const data = {
-    gastos: state.gastos,
-    categorias: state.categorias,
-    plantillas: state.plantillas,
-    lastSync: new Date().toISOString()
-  };
   setState({syncStatus:"syncing"}, false);
   try {
-    const content = JSON.stringify(data);
-    let fileId = state.driveFileId;
-    let res;
-    if (fileId) {
-      res = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
-        method: "PATCH",
-        headers: { "Authorization": `Bearer ${state.driveToken}`, "Content-Type": "application/json" },
-        body: content
-      });
-    } else {
-      const meta = await fetch("https://www.googleapis.com/drive/v3/files", {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${state.driveToken}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ name: DRIVE_FILE_NAME, mimeType: "application/json" })
-      });
-      if (meta.status === 401) { handleTokenExpired(); return; }
-      const metaData = await meta.json();
-      fileId = metaData.id;
-      res = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
-        method: "PATCH",
-        headers: { "Authorization": `Bearer ${state.driveToken}`, "Content-Type": "application/json" },
-        body: content
-      });
-      if (res.ok) {
-        localStorage.setItem("drive_file_id", fileId);
-        state.driveFileId = fileId;
-      }
+    // 1. Bajar lo que hay en Drive primero
+    const fetched = await fetchDriveData();
+    if (fetched.status === 401) { handleTokenExpired(); return; }
+    if (fetched.status !== 200) throw new Error("HTTP " + fetched.status);
+    const driveData = fetched.data || {};
+
+    // 2. Mergear con lo local
+    const { merged, allDeletedIds } = mergeGastos(driveData.gastos, state.gastos, driveData.deletedIds, state.deletedIds);
+    state.gastos = merged;
+    state.deletedIds = allDeletedIds;
+    localStorage.setItem("gastos_v5", JSON.stringify(state.gastos));
+    localStorage.setItem("deleted_ids_v1", JSON.stringify(state.deletedIds));
+
+    // Categorías y plantillas: el más reciente en cantidad gana (simplificado)
+    if (driveData.categorias && driveData.categorias.length > state.categorias.length) {
+      state.categorias = driveData.categorias;
+      localStorage.setItem("cats_v5", JSON.stringify(state.categorias));
     }
-    if (res.status === 401) { handleTokenExpired(); return; }
-    if (!res.ok) throw new Error("HTTP " + res.status);
+    if (driveData.plantillas && driveData.plantillas.length > state.plantillas.length) {
+      state.plantillas = driveData.plantillas;
+      localStorage.setItem("plants_v5", JSON.stringify(state.plantillas));
+    }
+
+    // 3. Subir el resultado mergeado
+    const toUpload = {
+      gastos: state.gastos,
+      categorias: state.categorias,
+      plantillas: state.plantillas,
+      deletedIds: state.deletedIds,
+      lastSync: new Date().toISOString()
+    };
+    const uploaded = await uploadDriveData(toUpload);
+    if (uploaded.status === 401) { handleTokenExpired(); return; }
+    if (!uploaded.ok) throw new Error("HTTP " + uploaded.status);
+
     localStorage.removeItem("pending_sync");
-    setState({syncStatus:"ok"}, false);
+    setState({syncStatus:"ok"});
     setTimeout(()=>{ if(state.syncStatus==="ok") setState({syncStatus:"idle"}, false); }, 3000);
   } catch(e) {
     console.error("Drive sync error:", e);
@@ -216,55 +290,9 @@ async function handleTokenExpired() {
 }
 
 async function loadFromDrive() {
-  if (!driveEnabled()) return;
-  setState({syncStatus:"syncing"}, false);
-  const ok = await ensureValidToken();
-  if (!ok) { handleTokenExpired(); return; }
-  try {
-    // Find file by name if we don't have fileId
-    let fileId = state.driveFileId;
-    if (!fileId) {
-      const search = await fetch(`https://www.googleapis.com/drive/v3/files?q=name='${DRIVE_FILE_NAME}'+and+trashed=false&fields=files(id,name)`, {
-        headers: { "Authorization": `Bearer ${state.driveToken}` }
-      });
-      const searchData = await search.json();
-      if (searchData.files && searchData.files.length > 0) {
-        fileId = searchData.files[0].id;
-        localStorage.setItem("drive_file_id", fileId);
-        state.driveFileId = fileId;
-      }
-    }
-    if (!fileId) { setState({syncStatus:"idle"}, false); return; }
-    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-      headers: { "Authorization": `Bearer ${state.driveToken}` }
-    });
-    if (res.status === 401) { handleTokenExpired(); return; }
-    const data = await res.json();
-    // Si hay cambios locales pendientes de subir (pending_sync), no pisar con Drive todavía
-    const hasPending = localStorage.getItem("pending_sync") === "1";
-    if (!hasPending) {
-      if (data.gastos) {
-        state.gastos = data.gastos;
-        localStorage.setItem("gastos_v5", JSON.stringify(state.gastos));
-      }
-      if (data.categorias && data.categorias.length) {
-        state.categorias = data.categorias;
-        localStorage.setItem("cats_v5", JSON.stringify(state.categorias));
-      }
-      if (data.plantillas && data.plantillas.length) {
-        state.plantillas = data.plantillas;
-        localStorage.setItem("plants_v5", JSON.stringify(state.plantillas));
-      }
-    } else {
-      // Hay cambios locales sin subir: subimos los locales en vez de bajar Drive
-      syncToDrive();
-    }
-    setState({syncStatus:"ok"});
-    setTimeout(()=>{ if(state.syncStatus==="ok") setState({syncStatus:"idle"}, false); }, 3000);
-  } catch(e) {
-    console.error("Drive load error:", e);
-    setState({syncStatus:"error"}, false);
-  }
+  // El merge se hace en syncToDrive, que baja, mergea y sube
+  await syncToDrive();
+  render();
 }
 
 function driveLogin() {
@@ -866,7 +894,7 @@ function agregarGasto() {
   const desc = state.desc.trim();
   if(!desc) return showToast("⚠ Escribí una descripción");
   if(!state.monto||parseFloat(state.monto)<=0) return showToast("⚠ Ingresá un monto válido");
-  const base = {desc,titular:state.titular.trim(),cuit:state.cuit.trim(),monto:parseFloat(state.monto),moneda:state.moneda,fecha:state.fecha,medio:medioStr(state.medio,state.subMedio)||"No especificado",categoria:state.categoria||"Sin categoría",nota:state.nota.trim()};
+  const base = {desc,titular:state.titular.trim(),cuit:state.cuit.trim(),monto:parseFloat(state.monto),moneda:state.moneda,fecha:state.fecha,medio:medioStr(state.medio,state.subMedio)||"No especificado",categoria:state.categoria||"Sin categoría",nota:state.nota.trim(),updatedAt:Date.now()};
   if(state.splitMode) {
     if(splitSum(state.splitParts)!==100) return showToast("⚠ Los % deben sumar 100");
     if(state.splitParts.some(p=>!p.empresa)) return showToast("⚠ Asigná empresa a cada parte");
@@ -882,7 +910,11 @@ function agregarGasto() {
   setState({desc:"",titular:"",cuit:"",monto:"",fecha:hoy(),nota:"",categoria:"",medio:null,subMedio:null,empresa:null,moneda:"ARS",sugerencia:null});
 }
 
-function eliminarGasto(id) { state.gastos=state.gastos.filter(g=>g.id!==id); saveAll(); render(); }
+function eliminarGasto(id) {
+  state.gastos=state.gastos.filter(g=>g.id!==id);
+  state.deletedIds=[...(state.deletedIds||[]),id];
+  saveAll(); render();
+}
 
 function guardarPlantilla(id) {
   const g = state.gastos.find(x=>x.id===id);
@@ -932,6 +964,7 @@ function confirmarPlantilla() {
     medio: medioStr(medio,subM)||"No especificado",
     categoria: state._modalCat !== undefined ? state._modalCat : (p.categoria||"Sin categoría"),
     nota: state._modalNota !== undefined ? state._modalNota : (p.nota||""),
+    updatedAt: Date.now(),
   };
   state.gastos = [...state.gastos, nuevo];
   saveAll();
@@ -1025,7 +1058,8 @@ function confirmarIA() {
     fecha: state._iaFecha!==undefined?state._iaFecha:(r.fecha||hoy()),
     medio: medioStr(state._iaMedio!==undefined?state._iaMedio:r.medio, state._iaSubMedio!==undefined?state._iaSubMedio:r.subMedio)||"No especificado",
     categoria: (state._iaCat!==undefined?state._iaCat:r.categoria)||"Otros",
-    nota: state._iaNota!==undefined?state._iaNota:"Cargado via IA"
+    nota: state._iaNota!==undefined?state._iaNota:"Cargado via IA",
+    updatedAt: Date.now(),
   };
   if(state.iaSplitMode) {
     if(splitSum(state.iaSplitParts)!==100) return showToast("⚠ Los % deben sumar 100");
@@ -1071,6 +1105,7 @@ function guardarEdicion() {
     medio: medioStr(m,sm)||g.medio||"No especificado",
     categoria: (state._editCat!==undefined?state._editCat:g.categoria)||"Sin categoría",
     nota: state._editNota!==undefined?state._editNota:(g.nota||""),
+    updatedAt: Date.now(),
   };
   state.gastos = state.gastos.map(x=>x.id===g.id?updated:x);
   saveAll();
