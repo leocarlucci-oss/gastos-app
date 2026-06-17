@@ -112,7 +112,7 @@ let state = {
   categorias: load("cats_v5", CATEGORIAS_DEFAULT),
   plantillas: load("plants_v5", []),
   // form
-  empresa: null, desc:"", titular:"", cuit:"", monto:"", moneda:"ARS", fecha:hoy(),
+  empresa: null, desc:"", titular:"", monto:"", moneda:"ARS", fecha:hoy(),
   medio:null, subMedio:null, categoria:"", nota:"",
   splitMode:false, splitParts:[{empresa:null,pct:50},{empresa:null,pct:50}],
   // ia
@@ -564,10 +564,6 @@ function buildCargar() {
       <input id="inp-titular" value="${esc(state.titular)}" oninput="state.titular=this.value" placeholder="Ej: YPF, Mercado Libre, Farmacity...">
     </div>
     <div class="field">
-      <span class="label">CUIT</span>
-      <input id="inp-cuit" value="${esc(state.cuit)}" oninput="state.cuit=this.value" placeholder="Ej: 30712345678">
-    </div>
-    <div class="field">
       <span class="label">Descripción</span>
       <input id="inp-desc" value="${esc(state.desc)}" oninput="onDescChange(this.value)" placeholder="Ej: Cena, combustible, repuesto...">
       ${sugHTML}
@@ -618,7 +614,6 @@ function buildIA() {
     resultHTML = `<div class="ia-result">
       <div style="color:var(--accent);font-weight:600;margin-bottom:12px">✓ Revisá y editá</div>
       <div class="field"><span class="label">Titular / Comercio</span><input value="${esc(state._iaTitular!==undefined?state._iaTitular:(r.titular||''))}" oninput="state._iaTitular=this.value" placeholder="Ej: YPF, Mercado Libre..."></div>
-      <div class="field"><span class="label">CUIT</span><input value="${esc(state._iaCuit!==undefined?state._iaCuit:(r.cuit||''))}" oninput="state._iaCuit=this.value" placeholder="Ej: 30712345678"></div>
       <div class="field"><span class="label">Descripción</span><input value="${esc(eD)}" oninput="state._iaDesc=this.value"></div>
       <div class="row2 field">
         <div><span class="label">Monto</span><input type="number" value="${eM}" oninput="state._iaMonto=this.value" step="0.01"></div>
@@ -894,7 +889,7 @@ function agregarGasto() {
   const desc = state.desc.trim();
   if(!desc) return showToast("⚠ Escribí una descripción");
   if(!state.monto||parseFloat(state.monto)<=0) return showToast("⚠ Ingresá un monto válido");
-  const base = {desc,titular:state.titular.trim(),cuit:state.cuit.trim(),monto:parseFloat(state.monto),moneda:state.moneda,fecha:state.fecha,medio:medioStr(state.medio,state.subMedio)||"No especificado",categoria:state.categoria||"Sin categoría",nota:state.nota.trim(),updatedAt:Date.now()};
+  const base = {desc,titular:state.titular.trim(),monto:parseFloat(state.monto),moneda:state.moneda,fecha:state.fecha,medio:medioStr(state.medio,state.subMedio)||"No especificado",categoria:state.categoria||"Sin categoría",nota:state.nota.trim(),updatedAt:Date.now()};
   if(state.splitMode) {
     if(splitSum(state.splitParts)!==100) return showToast("⚠ Los % deben sumar 100");
     if(state.splitParts.some(p=>!p.empresa)) return showToast("⚠ Asigná empresa a cada parte");
@@ -907,7 +902,7 @@ function agregarGasto() {
     showToast("✓ Gasto agregado");
   }
   saveAll();
-  setState({desc:"",titular:"",cuit:"",monto:"",fecha:hoy(),nota:"",categoria:"",medio:null,subMedio:null,empresa:null,moneda:"ARS",sugerencia:null});
+  setState({desc:"",titular:"",monto:"",fecha:hoy(),nota:"",categoria:"",medio:null,subMedio:null,empresa:null,moneda:"ARS",sugerencia:null});
 }
 
 function eliminarGasto(id) {
@@ -1014,7 +1009,7 @@ async function procesarIA() {
   if(!state.iaSplitMode&&!state.empIA) return showToast("⚠ Seleccioná empresa");
   setState({iaLoading:true,iaResult:null});
   try {
-    const prompt = (state.textoLibre?`Texto: "${state.textoLibre}". `:"") + `Extraé: titular (nombre del comercio/proveedor), cuit (CUIT/CUIL del comercio sin guiones solo números o null), desc (concepto del gasto), monto (número), moneda (ARS/U$S/Euros/CLP), fecha (YYYY-MM-DD o null), medio (Tx/TC ARS/TC U$S/TC EUR/Cash/MP), subMedio (o null), categoria (una de: ${state.categorias.join("/")}). Solo JSON sin backticks.`;
+    const prompt = (state.textoLibre?`Texto: "${state.textoLibre}". `:"") + `Extraé: titular (nombre del comercio/proveedor), desc (concepto del gasto), monto (número), moneda (ARS/U$S/Euros/CLP), fecha (YYYY-MM-DD o null), medio (Tx/TC ARS/TC U$S/TC EUR/Cash/MP), subMedio (o null), categoria (una de: ${state.categorias.join("/")}). Solo JSON sin backticks.`;
     let messages;
     if(state.imgB64) {
       messages=[{role:"user",content:[{type:"image",source:{type:"base64",media_type:state.imgMime||"image/jpeg",data:state.imgB64}},{type:"text",text:prompt}]}];
@@ -1043,7 +1038,7 @@ function setIAMedio(m){state._iaMedio=m;state._iaSubMedio=null;render();}
 function setIACat(v){state._iaCat=v;render();}
 function setIASubMedio(s){state._iaSubMedio=s;render();}
 function cancelarIA(){
-  ["_iaDesc","_iaTitular","_iaCuit","_iaMonto","_iaMoneda","_iaFecha","_iaMedio","_iaSubMedio","_iaCat","_iaNota"].forEach(k=>delete state[k]);
+  ["_iaDesc","_iaTitular","_iaMonto","_iaMoneda","_iaFecha","_iaMedio","_iaSubMedio","_iaCat","_iaNota"].forEach(k=>delete state[k]);
   setState({iaResult:null});
 }
 function confirmarIA() {
@@ -1051,7 +1046,6 @@ function confirmarIA() {
   if(!r) return;
   const base = {
     titular: (state._iaTitular!==undefined?state._iaTitular:(r.titular||"")),
-    cuit: (state._iaCuit!==undefined?state._iaCuit:(r.cuit||"")),
     desc: (state._iaDesc!==undefined?state._iaDesc:r.desc)||"Sin descripción",
     monto: parseFloat(state._iaMonto!==undefined?state._iaMonto:r.monto)||0,
     moneda: state._iaMoneda!==undefined?state._iaMoneda:(r.moneda||"ARS"),
@@ -1072,7 +1066,7 @@ function confirmarIA() {
     showToast("✓ Gasto agregado");
   }
   saveAll();
-  ["_iaDesc","_iaTitular","_iaCuit","_iaMonto","_iaMoneda","_iaFecha","_iaMedio","_iaSubMedio","_iaCat","_iaNota"].forEach(k=>delete state[k]);
+  ["_iaDesc","_iaTitular","_iaMonto","_iaMoneda","_iaFecha","_iaMedio","_iaSubMedio","_iaCat","_iaNota"].forEach(k=>delete state[k]);
   setState({iaResult:null,imgB64:null,imgPreview:null,textoLibre:""});
 }
 
@@ -1116,16 +1110,16 @@ function guardarEdicion() {
 function exportarExcel() {
   if(!state.gastos.length) return showToast("No hay gastos para exportar");
   const wb = XLSX.utils.book_new();
-  const headers = ["Fecha","Empresa","Titular/Comercio","CUIT","Descripción","Categoría","Medio de pago","Moneda","Monto","Nota"];
+  const headers = ["Fecha","Empresa","Titular/Comercio","Descripción","Categoría","Medio de pago","Moneda","Monto","Nota"];
   EMPRESAS.forEach(emp=>{
-    const rows=state.gastos.filter(g=>g.empresa===emp).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(g=>[g.fecha,g.empresa,g.titular||"",g.cuit||"",g.desc,g.categoria,g.medio,g.moneda||"ARS",g.monto,g.nota||""]);
+    const rows=state.gastos.filter(g=>g.empresa===emp).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(g=>[g.fecha,g.empresa,g.titular||"",g.desc,g.categoria,g.medio,g.moneda||"ARS",g.monto,g.nota||""]);
     const ws=XLSX.utils.aoa_to_sheet([headers,...rows]);
-    ws["!cols"]=[12,10,22,14,30,18,22,8,12,25].map(w=>({wch:w}));
+    ws["!cols"]=[12,10,22,30,18,22,8,12,25].map(w=>({wch:w}));
     XLSX.utils.book_append_sheet(wb,ws,emp);
   });
-  const allRows=[...state.gastos].sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(g=>[g.fecha,g.empresa,g.titular||"",g.cuit||"",g.desc,g.categoria,g.medio,g.moneda||"ARS",g.monto,g.nota||""]);
+  const allRows=[...state.gastos].sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(g=>[g.fecha,g.empresa,g.titular||"",g.desc,g.categoria,g.medio,g.moneda||"ARS",g.monto,g.nota||""]);
   const wsAll=XLSX.utils.aoa_to_sheet([headers,...allRows]);
-  wsAll["!cols"]=[12,10,22,14,30,18,22,8,12,25].map(w=>({wch:w}));
+  wsAll["!cols"]=[12,10,22,30,18,22,8,12,25].map(w=>({wch:w}));
   XLSX.utils.book_append_sheet(wb,wsAll,"Todos");
   XLSX.writeFile(wb,`gastos_${hoy()}.xlsx`);
   showToast("✓ Excel exportado");
