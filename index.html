@@ -114,7 +114,6 @@ let state = {
   gastos: load("gastos_v5", []),
   categorias: load("cats_v5", CATEGORIAS_DEFAULT),
   plantillas: load("plants_v5", []),
-  alias: load("alias_v1", []),  // [{canonical:"JetSmart", variantes:["jetsmart","jetsmart airlines"]}]
   // form
   empresa: null, desc:"", titular:"", monto:"", moneda:"ARS", fecha:hoy(),
   medio:null, subMedio:null, categoria:"", nota:"",
@@ -130,7 +129,7 @@ let state = {
   filtro:"Todos",
   busqueda:"",
   // modales
-  showCats:false, showAlias:false, plantillaEnUso:null, sugerencia:null,
+  showCats:false, plantillaEnUso:null, sugerencia:null,
   // sync
   syncStatus:"idle",
   // drive
@@ -150,7 +149,6 @@ function saveAll() {
   localStorage.setItem("gastos_v5", JSON.stringify(state.gastos));
   localStorage.setItem("cats_v5", JSON.stringify(state.categorias));
   localStorage.setItem("plants_v5", JSON.stringify(state.plantillas));
-  localStorage.setItem("alias_v1", JSON.stringify(state.alias));
   localStorage.setItem("local_modified", String(Date.now()));
   syncToDrive();
 }
@@ -260,17 +258,12 @@ async function syncToDrive() {
       state.plantillas = driveData.plantillas;
       localStorage.setItem("plants_v5", JSON.stringify(state.plantillas));
     }
-    if (driveData.alias && driveData.alias.length > state.alias.length) {
-      state.alias = driveData.alias;
-      localStorage.setItem("alias_v1", JSON.stringify(state.alias));
-    }
 
     // 3. Subir el resultado mergeado
     const toUpload = {
       gastos: state.gastos,
       categorias: state.categorias,
       plantillas: state.plantillas,
-      alias: state.alias,
       deletedIds: state.deletedIds,
       lastSync: new Date().toISOString()
     };
@@ -444,7 +437,6 @@ function buildApp() {
     ${state.tab==="buscar"   ? buildBuscar()    : ""}
     ${state.tab==="resumen"  ? buildResumen()   : ""}
     ${state.showCats         ? buildModalCats() : ""}
-    ${state.showAlias        ? buildModalAlias() : ""}
     ${state.plantillaEnUso   ? buildModalPlantilla() : ""}
     ${state.gastoEditando    ? buildModalEditarGasto() : ""}
   `;
@@ -575,11 +567,8 @@ function buildCargar() {
       ? `<div class="field"><span class="label">Empresa</span>${buildEmpGrid(state.empresa,"setEmpresa")}</div>`
       : `<div class="field"><span class="label">División</span>${buildSplitEditor(state.splitParts,"updateSplit","addSplit","eqSplit")}</div>`}
     <div class="field">
-      <span class="label" style="display:flex;justify-content:space-between;align-items:center">
-        <span>Titular / Comercio</span>
-        <button onclick="setState({showAlias:true})" style="background:none;border:none;color:var(--accent);font-size:11px;font-family:monospace;text-transform:uppercase;letter-spacing:.5px">⟳ alias</button>
-      </span>
-      <input id="inp-titular" value="${esc(state.titular)}" oninput="onTitularChange(this.value)" placeholder="Ej: YPF, Mercado Libre, Farmacity...">
+      <span class="label">Titular / Comercio</span>
+      <input id="inp-titular" value="${esc(state.titular)}" oninput="state.titular=this.value" placeholder="Ej: YPF, Mercado Libre, Farmacity...">
     </div>
     <div class="field">
       <span class="label">Descripción</span>
@@ -897,90 +886,7 @@ function buildModalPlantilla() {
   </div>`;
 }
 
-// ── Alias / Normalización de Titulares ───────────────────────
-function normalizarTitular(v) {
-  if (!v) return v;
-  const lower = v.toLowerCase().trim();
-  for (const a of state.alias) {
-    if (a.variantes.some(va => va.toLowerCase() === lower)) return a.canonical;
-  }
-  return v;
-}
-
-function onTitularChange(v) {
-  const normalizado = normalizarTitular(v);
-  state.titular = normalizado;
-  render();
-}
-
-function addAlias() {
-  const canonical = (document.getElementById("alias-canonical")||{}).value?.trim();
-  if (!canonical) return showToast("⚠ Ingresá el nombre canónico");
-  if (state.alias.find(a=>a.canonical===canonical)) return showToast("⚠ Ya existe ese alias");
-  state.alias = [...state.alias, {canonical, variantes:[canonical.toLowerCase()]}];
-  saveAll(); render();
-}
-
-function addVariante(canonical) {
-  const v = prompt(`Agregar variante para "${canonical}":`);
-  if (!v || !v.trim()) return;
-  state.alias = state.alias.map(a => a.canonical===canonical
-    ? {...a, variantes:[...new Set([...a.variantes, v.trim().toLowerCase()])]}
-    : a);
-  saveAll(); render();
-}
-
-function delVariante(canonical, variante) {
-  state.alias = state.alias.map(a => a.canonical===canonical
-    ? {...a, variantes: a.variantes.filter(v=>v!==variante)}
-    : a);
-  saveAll(); render();
-}
-
-function delAlias(canonical) {
-  if (!confirm(`¿Eliminar el alias "${canonical}" y todas sus variantes?`)) return;
-  state.alias = state.alias.filter(a=>a.canonical!==canonical);
-  saveAll(); render();
-}
-
-function buildModalAlias() {
-  const items = state.alias.length
-    ? state.alias.map(a=>`
-      <div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <span style="font-family:monospace;font-weight:600;color:var(--fg)">${esc(a.canonical)}</span>
-          <div style="display:flex;gap:6px">
-            <button onclick="addVariante('${esc(a.canonical)}')" style="padding:3px 10px;border-radius:6px;border:1px solid var(--accent);background:transparent;color:var(--accent);font-size:11px">+ variante</button>
-            <button onclick="delAlias('${esc(a.canonical)}')" class="btn-icon">🗑</button>
-          </div>
-        </div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px">
-          ${a.variantes.map(v=>`
-            <span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:20px;background:var(--bg);border:1px solid var(--border);font-size:12px;color:var(--muted)">
-              ${esc(v)}
-              <button onclick="delVariante('${esc(a.canonical)}','${esc(v)}')" style="background:none;border:none;color:var(--muted);cursor:pointer;padding:0;font-size:11px;line-height:1">✕</button>
-            </span>`).join("")}
-        </div>
-      </div>`).join("")
-    : `<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px">Sin alias definidos aún.</div>`;
-
-  return `<div class="modal-overlay" onclick="if(event.target===this)setState({showAlias:false})">
-    <div class="modal">
-      <div class="modal-header">
-        <div style="font-family:monospace;font-size:13px;font-weight:500;color:var(--accent)">⟳ Alias de titulares</div>
-        <button onclick="setState({showAlias:false})" style="background:none;border:none;color:var(--muted);font-size:20px">✕</button>
-      </div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Definí cómo se normaliza cada titular al escribirlo.</div>
-      <div style="display:flex;gap:8px;margin-bottom:16px">
-        <input id="alias-canonical" placeholder="Nombre canónico (ej: JetSmart)" onkeydown="if(event.key==='Enter')addAlias()" style="flex:1">
-        <button onclick="addAlias()" style="padding:10px 16px;background:var(--accent);color:#0F0F11;border:none;border-radius:8px;font-weight:600;font-size:14px;flex-shrink:0">+</button>
-      </div>
-      <div style="overflow-y:auto;max-height:55vh">${items}</div>
-    </div>
-  </div>`;
-}
-
- return (s||"").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function esc(s) { return (s||"").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 
 // ── Eventos ────────────────────────────────────────────────────
 function attachEvents() {
@@ -1043,7 +949,7 @@ function agregarGasto() {
   const desc = state.desc.trim();
   if(!desc) return showToast("⚠ Escribí una descripción");
   if(!state.monto||parseFloat(state.monto)<=0) return showToast("⚠ Ingresá un monto válido");
-  const base = {desc,titular:normalizarTitular(state.titular.trim()),monto:parseFloat(state.monto),moneda:state.moneda,fecha:state.fecha,medio:medioStr(state.medio,state.subMedio)||"No especificado",categoria:state.categoria||"Sin categoría",nota:state.nota.trim(),updatedAt:Date.now()};
+  const base = {desc,titular:state.titular.trim(),monto:parseFloat(state.monto),moneda:state.moneda,fecha:state.fecha,medio:medioStr(state.medio,state.subMedio)||"No especificado",categoria:state.categoria||"Sin categoría",nota:state.nota.trim(),updatedAt:Date.now()};
   if(state.splitMode) {
     if(splitSum(state.splitParts)!==100) return showToast("⚠ Los % deben sumar 100");
     if(state.splitParts.some(p=>!p.empresa)) return showToast("⚠ Asigná empresa a cada parte");
@@ -1107,7 +1013,7 @@ function confirmarPlantilla() {
   const nuevo = {
     id:Date.now(), empresa:emp,
     desc: state._modalDesc !== undefined ? state._modalDesc : p.desc,
-    titular: normalizarTitular(state._modalTitular !== undefined ? state._modalTitular : (p.titular||"")),
+    titular: state._modalTitular !== undefined ? state._modalTitular : (p.titular||""),
     monto: parseFloat(m),
     moneda: state._modalMoneda !== undefined ? state._modalMoneda : (p.moneda||"ARS"),
     fecha: state._modalFecha !== undefined ? state._modalFecha : hoy(),
@@ -1200,7 +1106,7 @@ function confirmarIA() {
   const r = state.iaResult;
   if(!r) return;
   const base = {
-    titular: normalizarTitular(state._iaTitular!==undefined?state._iaTitular:(r.titular||"")),
+    titular: (state._iaTitular!==undefined?state._iaTitular:(r.titular||"")),
     desc: (state._iaDesc!==undefined?state._iaDesc:r.desc)||"Sin descripción",
     monto: parseFloat(state._iaMonto!==undefined?state._iaMonto:r.monto)||0,
     moneda: state._iaMoneda!==undefined?state._iaMoneda:(r.moneda||"ARS"),
@@ -1248,7 +1154,7 @@ function guardarEdicion() {
     ...g,
     empresa: emp,
     desc: (state._editDesc!==undefined?state._editDesc:g.desc)||"Sin descripción",
-    titular: normalizarTitular(state._editTitular!==undefined?state._editTitular:(g.titular||"")),
+    titular: state._editTitular!==undefined?state._editTitular:(g.titular||""),
     monto: parseFloat(state._editMonto!==undefined?state._editMonto:g.monto)||0,
     moneda: state._editMoneda!==undefined?state._editMoneda:(g.moneda||"ARS"),
     fecha: state._editFecha!==undefined?state._editFecha:g.fecha,
