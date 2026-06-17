@@ -866,10 +866,13 @@ function buildResumen() {
       const t = eg.filter(g=>(g.moneda||"ARS")===mon).reduce((s,g)=>s+g.monto,0);
       return t > 0 ? `<div style="font-family:monospace;font-size:14px;font-weight:500;color:${c.text}">${fmtMonto(t,mon)}</div>` : "";
     }).filter(Boolean).join("");
-    return `<div class="res-card" onclick="setFiltro('${e}');setTab('lista')" style="border:1px solid ${c.border}55;background:${c.bg};cursor:pointer">
-      <div style="font-size:10px;font-family:monospace;color:var(--muted);text-transform:uppercase;margin-bottom:6px">${e}</div>
-      ${totalesPorMoneda || `<div style="font-size:12px;color:var(--muted)">Sin gastos</div>`}
-      <div style="font-size:11px;color:var(--muted);margin-top:6px">${eg.length} gasto${eg.length!==1?"s":""}</div>
+    return `<div class="res-card" style="border:1px solid ${c.border}55;background:${c.bg}">
+      <div onclick="setFiltro('${e}');setTab('lista')" style="cursor:pointer">
+        <div style="font-size:10px;font-family:monospace;color:var(--muted);text-transform:uppercase;margin-bottom:6px">${e}</div>
+        ${totalesPorMoneda || `<div style="font-size:12px;color:var(--muted)">Sin gastos</div>`}
+        <div style="font-size:11px;color:var(--muted);margin-top:6px">${eg.length} gasto${eg.length!==1?"s":""}</div>
+      </div>
+      ${eg.length > 0 ? `<button onclick="exportarExcel('${e}')" style="margin-top:8px;width:100%;padding:5px 8px;background:${c.border}22;color:${c.text};border:1px solid ${c.border}55;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">⬇ Exportar</button>` : ""}
     </div>`;
   }).join("");
   const totalesGlobal = MONEDAS.map(mon=>{
@@ -1239,11 +1242,21 @@ function guardarEdicion() {
   setState({gastoEditando:null});
   showToast("✓ Gasto actualizado");
 }
-function exportarExcel() {
+function exportarExcel(soloEmp) {
   if(!state.gastos.length) return showToast("No hay gastos para exportar");
   const wb = XLSX.utils.book_new();
   const headers = ["Fecha","Empresa","Titular/Comercio","Descripción","Categoría","Medio de pago","Subtipo","Moneda","Monto","Nota"];
   const splitMedio = g => { const p=(g.medio||"").split(" · "); return [p[0]||"",p[1]||""]; };
+  if (soloEmp) {
+    const rows = state.gastos.filter(g=>g.empresa===soloEmp).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(g=>[g.fecha,g.empresa,g.titular||"",g.desc,g.categoria,...splitMedio(g),g.moneda||"ARS",g.monto,g.nota||""]);
+    if (!rows.length) return showToast(`Sin gastos para ${soloEmp}`);
+    const ws = XLSX.utils.aoa_to_sheet([headers,...rows]);
+    ws["!cols"] = [12,10,22,30,18,16,16,8,12,25].map(w=>({wch:w}));
+    XLSX.utils.book_append_sheet(wb, ws, soloEmp);
+    XLSX.writeFile(wb, `gastos_${soloEmp}_${hoy()}.xlsx`);
+    showToast(`✓ Excel ${soloEmp} exportado`);
+    return;
+  }
   EMPRESAS.forEach(emp=>{
     const rows=state.gastos.filter(g=>g.empresa===emp).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(g=>[g.fecha,g.empresa,g.titular||"",g.desc,g.categoria,...splitMedio(g),g.moneda||"ARS",g.monto,g.nota||""]);
     const ws=XLSX.utils.aoa_to_sheet([headers,...rows]);
@@ -1269,11 +1282,10 @@ function exportarBusqueda() {
         || (g.nota||"").toLowerCase().includes(q);
   }).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha));
   if (!resultados.length) return showToast("Sin resultados para exportar");
-  const headers = ["Fecha","Empresa","Titular/Comercio","Descripción","Categoría","Medio de pago","Subtipo","Moneda","Monto","Nota"];
-  const splitMedio = g => { const p=(g.medio||"").split(" · "); return [p[0]||"",p[1]||""]; };
-  const rows = resultados.map(g=>[g.fecha,g.empresa,g.titular||"",g.desc,g.categoria,...splitMedio(g),g.moneda||"ARS",g.monto,g.nota||""]);
+  const headers = ["Fecha","Empresa","Titular/Comercio","Descripción","Categoría","Medio de pago","Moneda","Monto","Nota"];
+  const rows = resultados.map(g=>[g.fecha,g.empresa,g.titular||"",g.desc,g.categoria,g.medio,g.moneda||"ARS",g.monto,g.nota||""]);
   const ws = XLSX.utils.aoa_to_sheet([headers,...rows]);
-  ws["!cols"] = [12,10,22,30,18,16,16,8,12,25].map(w=>({wch:w}));
+  ws["!cols"] = [12,10,22,30,18,22,8,12,25].map(w=>({wch:w}));
   const wb = XLSX.utils.book_new();
   const nombreHoja = (state.busqueda||"busqueda").replace(/[^a-zA-Z0-9 áéíóúñÁÉÍÓÚÑ]/g,"").trim().slice(0,28) || "Busqueda";
   XLSX.utils.book_append_sheet(wb, ws, nombreHoja);
