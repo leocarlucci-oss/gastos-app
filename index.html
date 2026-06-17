@@ -794,6 +794,7 @@ function buildModalPlantilla() {
   const m = state._modalMedio !== undefined ? state._modalMedio : (partesMedio[0]||null);
   const sm = state._modalSubMedio !== undefined ? state._modalSubMedio : (partesMedio[1]||null);
   const mDesc = state._modalDesc !== undefined ? state._modalDesc : (p.desc||"");
+  const mTitular = state._modalTitular !== undefined ? state._modalTitular : (p.titular||"");
   const mMonto = state._modalMonto !== undefined ? state._modalMonto : (p.monto||"");
   const mMoneda = state._modalMoneda !== undefined ? state._modalMoneda : (p.moneda||"ARS");
   const mFecha = state._modalFecha !== undefined ? state._modalFecha : hoy();
@@ -808,6 +809,7 @@ function buildModalPlantilla() {
         <button onclick="cerrarModal()" style="background:none;border:none;color:var(--muted);font-size:20px">✕</button>
       </div>
       <div class="field"><span class="label">Empresa</span>${buildEmpGrid(mEmp,"setModalEmpresa")}</div>
+      <div class="field"><span class="label">Titular / Comercio</span><input value="${esc(mTitular)}" oninput="state._modalTitular=this.value" placeholder="Ej: YPF, Mercado Libre..."></div>
       <div class="field"><span class="label">Descripción</span><input value="${esc(mDesc)}" oninput="state._modalDesc=this.value"></div>
       <div class="row2">
         <div class="field"><span class="label">Monto</span><input type="number" value="${mMonto}" oninput="state._modalMonto=this.value" step="0.01"></div>
@@ -822,7 +824,7 @@ function buildModalPlantilla() {
       <div class="field"><span class="label">Categoría</span>
         <select onchange="state._modalCat=this.value">
           <option value="">Seleccioná...</option>
-          ${state.categorias.map(c=>`<option${mCat===c?" selected":""}>${c}</option>`).join("")}
+          ${state.categorias.map(c=>`<option value="${esc(c)}"${mCat===c?" selected":""}>${esc(c)}</option>`).join("")}
         </select>
       </div>
       <div class="field"><span class="label">Nota</span><input value="${esc(mNota)}" oninput="state._modalNota=this.value"></div>
@@ -940,7 +942,7 @@ function usarPlantilla_auto(id) {
 }
 
 function clearModalState() {
-  delete state._modalDesc; delete state._modalMonto; delete state._modalMoneda;
+  delete state._modalDesc; delete state._modalTitular; delete state._modalMonto; delete state._modalMoneda;
   delete state._modalFecha; delete state._modalMedio; delete state._modalSubMedio;
   delete state._modalCat; delete state._modalNota; delete state._modalEmpresa;
 }
@@ -958,6 +960,7 @@ function confirmarPlantilla() {
   const nuevo = {
     id:Date.now(), empresa:emp,
     desc: state._modalDesc !== undefined ? state._modalDesc : p.desc,
+    titular: state._modalTitular !== undefined ? state._modalTitular : (p.titular||""),
     monto: parseFloat(m),
     moneda: state._modalMoneda !== undefined ? state._modalMoneda : (p.moneda||"ARS"),
     fecha: state._modalFecha !== undefined ? state._modalFecha : hoy(),
