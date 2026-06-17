@@ -543,7 +543,7 @@ function buildModalEditarGasto() {
         <button onclick="cerrarEditarGasto()" style="background:none;border:none;color:var(--muted);font-size:20px">✕</button>
       </div>
       <div class="field"><span class="label">Empresa</span>${buildEmpGrid(eEmp,"setEditEmpresa")}</div>
-      <div class="field"><span class="label">Titular / Comercio</span><input value="${esc(eTitular)}" oninput="state._editTitular=this.value" onblur="state._editTitular=normalizarTitular(this.value);render()" placeholder="Ej: YPF, Mercado Libre..."></div>
+      <div class="field"><span class="label">Titular / Comercio</span><input value="${esc(eTitular)}" oninput="state._editTitular=this.value" placeholder="Ej: YPF, Mercado Libre..."></div>
       <div class="field"><span class="label">Descripción</span><input value="${esc(eDesc)}" oninput="state._editDesc=this.value"></div>
       <div class="field"><span class="label">Categoría</span><select onchange="state._editCat=this.value"><option value="">Seleccioná...</option>${catOpts}</select></div>
       <div class="row2">
@@ -579,7 +579,7 @@ function buildCargar() {
         <span>Titular / Comercio</span>
         <button onclick="setState({showAlias:true})" style="background:none;border:none;color:var(--accent);font-size:11px;font-family:monospace;text-transform:uppercase;letter-spacing:.5px">⟳ alias</button>
       </span>
-      <input id="inp-titular" value="${esc(state.titular)}" oninput="onTitularChange(this.value)" onblur="onTitularBlur(this.value)" placeholder="Ej: YPF, Mercado Libre, Farmacity...">
+      <input id="inp-titular" value="${esc(state.titular)}" oninput="onTitularChange(this.value)" placeholder="Ej: YPF, Mercado Libre, Farmacity...">
     </div>
     <div class="field">
       <span class="label">Descripción</span>
@@ -631,7 +631,7 @@ function buildIA() {
     const monOpts = ["ARS","U$S","Euros","CLP"].map(m=>`<option${eMon===m?" selected":""}>${m}</option>`).join("");
     resultHTML = `<div class="ia-result">
       <div style="color:var(--accent);font-weight:600;margin-bottom:12px">✓ Revisá y editá</div>
-      <div class="field"><span class="label">Titular / Comercio</span><input value="${esc(state._iaTitular!==undefined?state._iaTitular:(r.titular||''))}" oninput="state._iaTitular=this.value" onblur="state._iaTitular=normalizarTitular(this.value);render()" placeholder="Ej: YPF, Mercado Libre..."></div>
+      <div class="field"><span class="label">Titular / Comercio</span><input value="${esc(state._iaTitular!==undefined?state._iaTitular:(r.titular||''))}" oninput="state._iaTitular=this.value" placeholder="Ej: YPF, Mercado Libre..."></div>
       <div class="field"><span class="label">Descripción</span><input value="${esc(eD)}" oninput="state._iaDesc=this.value"></div>
       <div class="field">
         <span class="label" style="display:flex;justify-content:space-between;align-items:center">
@@ -873,7 +873,7 @@ function buildModalPlantilla() {
         <button onclick="cerrarModal()" style="background:none;border:none;color:var(--muted);font-size:20px">✕</button>
       </div>
       <div class="field"><span class="label">Empresa</span>${buildEmpGrid(mEmp,"setModalEmpresa")}</div>
-      <div class="field"><span class="label">Titular / Comercio</span><input value="${esc(mTitular)}" oninput="state._modalTitular=this.value" onblur="state._modalTitular=normalizarTitular(this.value);render()" placeholder="Ej: YPF, Mercado Libre..."></div>
+      <div class="field"><span class="label">Titular / Comercio</span><input value="${esc(mTitular)}" oninput="state._modalTitular=this.value" placeholder="Ej: YPF, Mercado Libre..."></div>
       <div class="field"><span class="label">Descripción</span><input value="${esc(mDesc)}" oninput="state._modalDesc=this.value"></div>
       <div class="field"><span class="label">Categoría</span>
         <select onchange="state._modalCat=this.value">
@@ -908,15 +908,9 @@ function normalizarTitular(v) {
 }
 
 function onTitularChange(v) {
-  state.titular = v; // actualiza estado sin re-render
-}
-
-function onTitularBlur(v) {
   const normalizado = normalizarTitular(v);
-  if (normalizado !== v) {
-    state.titular = normalizado;
-    render();
-  }
+  state.titular = normalizado;
+  render();
 }
 
 function addAlias() {
