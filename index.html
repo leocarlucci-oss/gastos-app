@@ -535,13 +535,13 @@ function buildModalEditarGasto() {
       <div class="field"><span class="label">Empresa</span>${buildEmpGrid(eEmp,"setEditEmpresa")}</div>
       <div class="field"><span class="label">Titular / Comercio</span><input value="${esc(eTitular)}" oninput="state._editTitular=this.value" placeholder="Ej: YPF, Mercado Libre..."></div>
       <div class="field"><span class="label">Descripción</span><input value="${esc(eDesc)}" oninput="state._editDesc=this.value"></div>
+      <div class="field"><span class="label">Categoría</span><select onchange="state._editCat=this.value"><option value="">Seleccioná...</option>${catOpts}</select></div>
       <div class="row2">
         <div class="field"><span class="label">Monto</span><input type="number" value="${eMonto}" oninput="state._editMonto=this.value" step="0.01"></div>
         <div class="field"><span class="label">Moneda</span><select onchange="state._editMoneda=this.value">${monOpts}</select></div>
       </div>
       <div class="field"><span class="label">Fecha</span><input type="date" value="${eFecha}" onchange="state._editFecha=this.value"></div>
       <div class="field"><span class="label">Medio de pago</span>${buildMedioPicker(m,sm,"setEditMedio","setEditSubMedio")}</div>
-      <div class="field"><span class="label">Categoría</span><select onchange="state._editCat=this.value"><option value="">Seleccioná...</option>${catOpts}</select></div>
       <div class="field"><span class="label">Nota</span><input value="${esc(eNota)}" oninput="state._editNota=this.value" placeholder="Aclaración..."></div>
       <button class="btn-primary" onclick="guardarEdicion()">Guardar cambios</button>
       <button onclick="cerrarEditarGasto()" style="width:100%;padding:10px;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:13px;cursor:pointer;margin-top:8px">Cancelar</button>
@@ -573,16 +573,6 @@ function buildCargar() {
       <input id="inp-desc" value="${esc(state.desc)}" oninput="onDescChange(this.value)" placeholder="Ej: Cena, combustible, repuesto...">
       ${sugHTML}
     </div>
-    <div class="row2">
-      <div class="field"><span class="label">Monto</span><input id="inp-monto" type="number" value="${state.monto}" oninput="setState({monto:this.value},false)" placeholder="0.00" step="0.01"></div>
-      <div class="field"><span class="label">Moneda</span>
-        <select onchange="setState({moneda:this.value})">
-          ${["ARS","U$S","Euros","CLP"].map(m=>`<option${state.moneda===m?" selected":""}>${m}</option>`).join("")}
-        </select>
-      </div>
-    </div>
-    <div class="field"><span class="label">Fecha</span><input type="date" value="${state.fecha}" onchange="setState({fecha:this.value})"></div>
-    <div class="field"><span class="label">Medio de pago</span>${buildMedioPicker(state.medio,state.subMedio,"setMedio","setSubMedio")}</div>
     <div class="field">
       <span class="label" style="display:flex;justify-content:space-between;align-items:center">
         <span>Categoría</span>
@@ -593,6 +583,16 @@ function buildCargar() {
         ${state.categorias.map(c=>`<option${state.categoria===c?" selected":""}>${c}</option>`).join("")}
       </select>
     </div>
+    <div class="row2">
+      <div class="field"><span class="label">Monto</span><input id="inp-monto" type="number" value="${state.monto}" oninput="setState({monto:this.value},false)" placeholder="0.00" step="0.01"></div>
+      <div class="field"><span class="label">Moneda</span>
+        <select onchange="setState({moneda:this.value})">
+          ${["ARS","U$S","Euros","CLP"].map(m=>`<option${state.moneda===m?" selected":""}>${m}</option>`).join("")}
+        </select>
+      </div>
+    </div>
+    <div class="field"><span class="label">Fecha</span><input type="date" value="${state.fecha}" onchange="setState({fecha:this.value})"></div>
+    <div class="field"><span class="label">Medio de pago</span>${buildMedioPicker(state.medio,state.subMedio,"setMedio","setSubMedio")}</div>
     <div class="field"><span class="label">Nota (opcional)</span><input value="${esc(state.nota)}" oninput="setState({nota:this.value},false)" placeholder="Aclaración..."></div>
     <button class="btn-primary" onclick="agregarGasto()">${state.splitMode?`Agregar ${state.splitParts.length} gastos divididos`:"Agregar gasto"}</button>
   </div>`;
@@ -620,12 +620,6 @@ function buildIA() {
       <div style="color:var(--accent);font-weight:600;margin-bottom:12px">✓ Revisá y editá</div>
       <div class="field"><span class="label">Titular / Comercio</span><input value="${esc(state._iaTitular!==undefined?state._iaTitular:(r.titular||''))}" oninput="state._iaTitular=this.value" placeholder="Ej: YPF, Mercado Libre..."></div>
       <div class="field"><span class="label">Descripción</span><input value="${esc(eD)}" oninput="state._iaDesc=this.value"></div>
-      <div class="row2 field">
-        <div><span class="label">Monto</span><input type="number" value="${eM}" oninput="state._iaMonto=this.value" step="0.01"></div>
-        <div><span class="label">Moneda</span><select onchange="state._iaMoneda=this.value">${monOpts}</select></div>
-      </div>
-      <div class="field"><span class="label">Fecha</span><input type="date" value="${eF}" onchange="state._iaFecha=this.value"></div>
-      <div class="field"><span class="label">Medio de pago</span>${buildMedioPicker(eMed,eSub,"setIAMedio","setIASubMedio")}</div>
       <div class="field">
         <span class="label" style="display:flex;justify-content:space-between;align-items:center">
           <span>Categoría</span>
@@ -633,6 +627,12 @@ function buildIA() {
         </span>
         <select onchange="setIACat(this.value)"><option value="">Seleccioná...</option>${catOpts}</select>
       </div>
+      <div class="row2 field">
+        <div><span class="label">Monto</span><input type="number" value="${eM}" oninput="state._iaMonto=this.value" step="0.01"></div>
+        <div><span class="label">Moneda</span><select onchange="state._iaMoneda=this.value">${monOpts}</select></div>
+      </div>
+      <div class="field"><span class="label">Fecha</span><input type="date" value="${eF}" onchange="state._iaFecha=this.value"></div>
+      <div class="field"><span class="label">Medio de pago</span>${buildMedioPicker(eMed,eSub,"setIAMedio","setIASubMedio")}</div>
       <div class="field"><span class="label">Nota</span><input value="${esc(eNot)}" oninput="state._iaNota=this.value" placeholder="Aclaración..."></div>
       ${state.iaSplitMode?`<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">${state.iaSplitParts.map(p=>`<div style="font-size:13px;line-height:1.9"><span style="color:${EMP[p.empresa]?.text||"var(--muted)"}>${p.empresa||"?"}</span><span style="color:var(--muted)"> → ${p.pct}% = </span>${eM?`${eMon} ${Number(parseFloat(eM)*p.pct/100).toLocaleString("es-AR")}`:"—"}</div>`).join("")}</div>`:""}
       <button class="btn-primary" onclick="confirmarIA()" style="margin-top:4px">${state.iaSplitMode?`Confirmar ${state.iaSplitParts.length} gastos`:"Confirmar y agregar"}</button>
@@ -813,6 +813,12 @@ function buildModalPlantilla() {
       <div class="field"><span class="label">Empresa</span>${buildEmpGrid(mEmp,"setModalEmpresa")}</div>
       <div class="field"><span class="label">Titular / Comercio</span><input value="${esc(mTitular)}" oninput="state._modalTitular=this.value" placeholder="Ej: YPF, Mercado Libre..."></div>
       <div class="field"><span class="label">Descripción</span><input value="${esc(mDesc)}" oninput="state._modalDesc=this.value"></div>
+      <div class="field"><span class="label">Categoría</span>
+        <select onchange="state._modalCat=this.value">
+          <option value="">Seleccioná...</option>
+          ${state.categorias.map(c=>`<option value="${esc(c)}"${mCat===c?" selected":""}>${esc(c)}</option>`).join("")}
+        </select>
+      </div>
       <div class="row2">
         <div class="field"><span class="label">Monto</span><input type="number" value="${mMonto}" oninput="state._modalMonto=this.value" step="0.01"></div>
         <div class="field"><span class="label">Moneda</span>
@@ -823,12 +829,6 @@ function buildModalPlantilla() {
       </div>
       <div class="field"><span class="label">Fecha</span><input type="date" value="${mFecha}" onchange="state._modalFecha=this.value"></div>
       <div class="field"><span class="label">Medio de pago</span>${buildMedioPicker(m,sm,"setModalMedio","setModalSubMedio")}</div>
-      <div class="field"><span class="label">Categoría</span>
-        <select onchange="state._modalCat=this.value">
-          <option value="">Seleccioná...</option>
-          ${state.categorias.map(c=>`<option value="${esc(c)}"${mCat===c?" selected":""}>${esc(c)}</option>`).join("")}
-        </select>
-      </div>
       <div class="field"><span class="label">Nota</span><input value="${esc(mNota)}" oninput="state._modalNota=this.value"></div>
       <button class="btn-primary" onclick="confirmarPlantilla()">Confirmar y agregar</button>
     </div>
