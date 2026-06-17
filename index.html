@@ -782,6 +782,10 @@ function buildBuscar() {
     ? `<div style="font-size:12px;color:var(--muted);margin-bottom:10px">${resultados.length} resultado${resultados.length!==1?"s":""}</div>`
     : "";
 
+  const exportBtn = q.length > 0 && resultados.length > 0
+    ? `<button onclick="exportarBusqueda()" style="width:100%;padding:10px;background:linear-gradient(135deg,#065F46,#059669);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:12px;cursor:pointer">⬇ Exportar resultados a Excel (${resultados.length})</button>`
+    : "";
+
   return `<div class="panel">
     <input
       type="text"
@@ -792,6 +796,7 @@ function buildBuscar() {
       style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--fg);font-size:14px;box-sizing:border-box;margin-bottom:12px;outline:none"
       autofocus
     >
+    ${exportBtn}
     <div id="busqueda-resultados">${countMsg}${items}</div>
   </div>`;
 }
@@ -834,6 +839,22 @@ function onBusquedaChange(v) {
 
   const container = document.getElementById("busqueda-resultados");
   if (container) container.innerHTML = countMsg + items;
+
+  // Actualizar botón de exportar
+  let exportBtn = document.getElementById("btn-exportar-busqueda");
+  if (!exportBtn) {
+    exportBtn = document.createElement("button");
+    exportBtn.id = "btn-exportar-busqueda";
+    exportBtn.style.cssText = "width:100%;padding:10px;background:linear-gradient(135deg,#065F46,#059669);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:12px;cursor:pointer";
+    exportBtn.onclick = exportarBusqueda;
+    if (container) container.parentNode.insertBefore(exportBtn, container);
+  }
+  if (q.length > 0 && resultados.length > 0) {
+    exportBtn.textContent = `⬇ Exportar resultados a Excel (${resultados.length})`;
+    exportBtn.style.display = "block";
+  } else {
+    exportBtn.style.display = "none";
+  }
 }
 
 function buildResumen() {
@@ -1234,6 +1255,29 @@ function exportarExcel() {
   XLSX.utils.book_append_sheet(wb,wsAll,"Todos");
   XLSX.writeFile(wb,`gastos_${hoy()}.xlsx`);
   showToast("✓ Excel exportado");
+}
+
+function exportarBusqueda() {
+  const q = (state.busqueda||"").toLowerCase().trim();
+  if (!q) return showToast("No hay búsqueda activa");
+  const resultados = [...state.gastos].filter(g => {
+    return (g.titular||"").toLowerCase().includes(q)
+        || (g.desc||"").toLowerCase().includes(q)
+        || (g.categoria||"").toLowerCase().includes(q)
+        || (g.fecha||"").includes(q)
+        || (g.nota||"").toLowerCase().includes(q);
+  }).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha));
+  if (!resultados.length) return showToast("Sin resultados para exportar");
+  const headers = ["Fecha","Empresa","Titular/Comercio","Descripción","Categoría","Medio de pago","Moneda","Monto","Nota"];
+  const rows = resultados.map(g=>[g.fecha,g.empresa,g.titular||"",g.desc,g.categoria,g.medio,g.moneda||"ARS",g.monto,g.nota||""]);
+  const ws = XLSX.utils.aoa_to_sheet([headers,...rows]);
+  ws["!cols"] = [12,10,22,30,18,22,8,12,25].map(w=>({wch:w}));
+  const wb = XLSX.utils.book_new();
+  const nombreHoja = (state.busqueda||"busqueda").replace(/[^a-zA-Z0-9 áéíóúñÁÉÍÓÚÑ]/g,"").trim().slice(0,28) || "Busqueda";
+  XLSX.utils.book_append_sheet(wb, ws, nombreHoja);
+  const nombreArchivo = `busqueda_${(state.busqueda||"").replace(/\s+/g,"_").slice(0,30)}_${hoy()}.xlsx`;
+  XLSX.writeFile(wb, nombreArchivo);
+  showToast(`✓ Excel exportado (${resultados.length} gastos)`);
 }
 
 // ── Init ──────────────────────────────────────────────────────
