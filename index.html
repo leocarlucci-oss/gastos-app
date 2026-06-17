@@ -392,6 +392,14 @@ function fmtMonto(n, m) {
 }
 
 function medioStr(m, sm) { return m?(sm?`${m} · ${sm}`:m):null; }
+function getTitularesConocidos() {
+  const set = new Set(
+    state.gastos
+      .map(g => (g.titular || "").trim())
+      .filter(t => t.length > 0)
+  );
+  return [...set].sort((a, b) => a.localeCompare(b));
+}
 
 function splitSum(parts) { return parts.reduce((s,p)=>s+(parseFloat(p.pct)||0),0); }
 
@@ -568,7 +576,8 @@ function buildCargar() {
       : `<div class="field"><span class="label">División</span>${buildSplitEditor(state.splitParts,"updateSplit","addSplit","eqSplit")}</div>`}
     <div class="field">
       <span class="label">Titular / Comercio</span>
-      <input id="inp-titular" value="${esc(state.titular)}" oninput="state.titular=this.value" placeholder="Ej: YPF, Mercado Libre, Farmacity...">
+      <input id="inp-titular" value="${esc(state.titular)}" oninput="state.titular=this.value" placeholder="Ej: YPF, Mercado Libre, Farmacity..." list="datalist-titulares" autocomplete="off">
+      <datalist id="datalist-titulares">${getTitularesConocidos().map(t=>`<option value="${esc(t)}">`).join("")}</datalist>
     </div>
     <div class="field">
       <span class="label">Descripción</span>
