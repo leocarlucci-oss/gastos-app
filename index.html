@@ -477,11 +477,11 @@ function buildEmpGrid(sel, onclickFn) {
 }
 
 function buildMedioPicker(medio, subMedio, setFn, setSubFn) {
-  const tipos = Object.keys(MEDIOS).map(k=>{
+  const tipos = Object.keys(MEDIOS).sort((a,b)=>a.localeCompare(b)).map(k=>{
     const active=medio===k, c=MEDIOS[k].color;
     return `<button class="medio-tipo-btn" onclick="${setFn}('${k}')" style="border-color:${active?c:"var(--border)"};background:${active?c+"22":"transparent"};color:${active?c:"var(--muted)"};font-weight:${active?600:400}">${k}</button>`;
   }).join("");
-  const subs = medio ? `<div class="medio-subs">${MEDIOS[medio].sub.map(s=>{
+  const subs = medio ? `<div class="medio-subs">${[...MEDIOS[medio].sub].sort((a,b)=>a.localeCompare(b)).map(s=>{
     const active=subMedio===s, c=MEDIOS[medio].color;
     return `<button class="medio-sub-btn" onclick="${setSubFn}('${s}')" style="border-color:${active?c:"var(--border)"};background:${active?c+"22":"transparent"};color:${active?c:"var(--muted)"}">${s}</button>`;
   }).join("")}</div>` : "";
