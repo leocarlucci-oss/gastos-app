@@ -1242,16 +1242,17 @@ function guardarEdicion() {
 function exportarExcel() {
   if(!state.gastos.length) return showToast("No hay gastos para exportar");
   const wb = XLSX.utils.book_new();
-  const headers = ["Fecha","Empresa","Titular/Comercio","Descripción","Categoría","Medio de pago","Moneda","Monto","Nota"];
+  const headers = ["Fecha","Empresa","Titular/Comercio","Descripción","Categoría","Medio de pago","Subtipo","Moneda","Monto","Nota"];
+  const splitMedio = g => { const p=(g.medio||"").split(" · "); return [p[0]||"",p[1]||""]; };
   EMPRESAS.forEach(emp=>{
-    const rows=state.gastos.filter(g=>g.empresa===emp).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(g=>[g.fecha,g.empresa,g.titular||"",g.desc,g.categoria,g.medio,g.moneda||"ARS",g.monto,g.nota||""]);
+    const rows=state.gastos.filter(g=>g.empresa===emp).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(g=>[g.fecha,g.empresa,g.titular||"",g.desc,g.categoria,...splitMedio(g),g.moneda||"ARS",g.monto,g.nota||""]);
     const ws=XLSX.utils.aoa_to_sheet([headers,...rows]);
-    ws["!cols"]=[12,10,22,30,18,22,8,12,25].map(w=>({wch:w}));
+    ws["!cols"]=[12,10,22,30,18,16,16,8,12,25].map(w=>({wch:w}));
     XLSX.utils.book_append_sheet(wb,ws,emp);
   });
-  const allRows=[...state.gastos].sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(g=>[g.fecha,g.empresa,g.titular||"",g.desc,g.categoria,g.medio,g.moneda||"ARS",g.monto,g.nota||""]);
+  const allRows=[...state.gastos].sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(g=>[g.fecha,g.empresa,g.titular||"",g.desc,g.categoria,...splitMedio(g),g.moneda||"ARS",g.monto,g.nota||""]);
   const wsAll=XLSX.utils.aoa_to_sheet([headers,...allRows]);
-  wsAll["!cols"]=[12,10,22,30,18,22,8,12,25].map(w=>({wch:w}));
+  wsAll["!cols"]=[12,10,22,30,18,16,16,8,12,25].map(w=>({wch:w}));
   XLSX.utils.book_append_sheet(wb,wsAll,"Todos");
   XLSX.writeFile(wb,`gastos_${hoy()}.xlsx`);
   showToast("✓ Excel exportado");
@@ -1268,10 +1269,11 @@ function exportarBusqueda() {
         || (g.nota||"").toLowerCase().includes(q);
   }).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha));
   if (!resultados.length) return showToast("Sin resultados para exportar");
-  const headers = ["Fecha","Empresa","Titular/Comercio","Descripción","Categoría","Medio de pago","Moneda","Monto","Nota"];
-  const rows = resultados.map(g=>[g.fecha,g.empresa,g.titular||"",g.desc,g.categoria,g.medio,g.moneda||"ARS",g.monto,g.nota||""]);
+  const headers = ["Fecha","Empresa","Titular/Comercio","Descripción","Categoría","Medio de pago","Subtipo","Moneda","Monto","Nota"];
+  const splitMedio = g => { const p=(g.medio||"").split(" · "); return [p[0]||"",p[1]||""]; };
+  const rows = resultados.map(g=>[g.fecha,g.empresa,g.titular||"",g.desc,g.categoria,...splitMedio(g),g.moneda||"ARS",g.monto,g.nota||""]);
   const ws = XLSX.utils.aoa_to_sheet([headers,...rows]);
-  ws["!cols"] = [12,10,22,30,18,22,8,12,25].map(w=>({wch:w}));
+  ws["!cols"] = [12,10,22,30,18,16,16,8,12,25].map(w=>({wch:w}));
   const wb = XLSX.utils.book_new();
   const nombreHoja = (state.busqueda||"busqueda").replace(/[^a-zA-Z0-9 áéíóúñÁÉÍÓÚÑ]/g,"").trim().slice(0,28) || "Busqueda";
   XLSX.utils.book_append_sheet(wb, ws, nombreHoja);
