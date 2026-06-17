@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Gastos">
 <title>Gestor de Gastos</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
@@ -543,7 +543,7 @@ function buildModalEditarGasto() {
         <button onclick="cerrarEditarGasto()" style="background:none;border:none;color:var(--muted);font-size:20px">✕</button>
       </div>
       <div class="field"><span class="label">Empresa</span>${buildEmpGrid(eEmp,"setEditEmpresa")}</div>
-      <div class="field"><span class="label">Titular / Comercio</span><input value="${esc(eTitular)}" oninput="state._editTitular=this.value" placeholder="Ej: YPF, Mercado Libre..." list="datalist-titulares" autocomplete="off"></div>
+      <div class="field"><span class="label">Titular / Comercio</span><input value="${esc(eTitular)}" oninput="state._editTitular=this.value" placeholder="Ej: YPF, Mercado Libre..."></div>
       <div class="field"><span class="label">Descripción</span><input value="${esc(eDesc)}" oninput="state._editDesc=this.value"></div>
       <div class="field"><span class="label">Categoría</span><select onchange="state._editCat=this.value"><option value="">Seleccioná...</option>${catOpts}</select></div>
       <div class="row2">
@@ -1242,55 +1242,118 @@ function guardarEdicion() {
   setState({gastoEditando:null});
   showToast("✓ Gasto actualizado");
 }
-function exportarExcel(soloEmp) {
+function fmtMonedaExcel(moneda) {
+  if (moneda === "U$S")   return '"U$S "#,##0.00';
+  if (moneda === "Euros") return '"€ "#,##0.00';
+  if (moneda === "CLP")   return '"CLP "#,##0';
+  return '"$ "#,##0.00';
+}
+
+function aplicarEstilosHoja(ws, rows) {
+  const HEADER_FILL = { type:"pattern", pattern:"solid", fgColor:{argb:"FF1E3A5F"} };
+  const HEADER_FONT = { name:"Arial", bold:true, color:{argb:"FFFFFFFF"}, size:10 };
+  const BODY_FONT   = { name:"Arial", size:10 };
+  const BRD         = { style:"thin", color:{argb:"FFD0D0D0"} };
+  const BORDER      = { top:BRD, left:BRD, bottom:BRD, right:BRD };
+
+  ws.getRow(1).eachCell(cell => {
+    cell.font = HEADER_FONT;
+    cell.fill = HEADER_FILL;
+    cell.alignment = { vertical:"middle", horizontal:"center" };
+    cell.border = BORDER;
+  });
+  ws.getRow(1).height = 20;
+
+  rows.forEach((row, ri) => {
+    const exRow = ws.getRow(ri + 2);
+    const zebra = ri % 2 === 0;
+    const moneda = row[7] || "ARS"; // col index 7 = Moneda
+    exRow.eachCell({ includeEmpty:true }, (cell, colIdx) => {
+      cell.font = BODY_FONT;
+      cell.border = BORDER;
+      cell.alignment = { vertical:"middle" };
+      if (zebra) cell.fill = { type:"pattern", pattern:"solid", fgColor:{argb:"FFF5F8FF"} };
+      if (colIdx === 1 && cell.value) {
+        const d = new Date(cell.value + "T00:00:00");
+        if (!isNaN(d)) { cell.value = d; cell.numFmt = "dd/mm/yyyy"; }
+      }
+      if (colIdx === 9 && typeof cell.value === "number") {
+        cell.numFmt = fmtMonedaExcel(moneda);
+        cell.alignment = { vertical:"middle", horizontal:"right" };
+      }
+    });
+    exRow.height = 18;
+  });
+
+  [12,12,24,32,20,16,16,8,14,28].forEach((w,i) => { ws.getColumn(i+1).width = w; });
+  ws.views = [{ state:"frozen", ySplit:1 }];
+  ws.autoFilter = { from:{row:1,column:1}, to:{row:1,column:10} };
+}
+
+async function exportarExcel(soloEmp) {
   if(!state.gastos.length) return showToast("No hay gastos para exportar");
-  const wb = XLSX.utils.book_new();
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Gastos App"; wb.created = new Date();
   const headers = ["Fecha","Empresa","Titular/Comercio","Descripción","Categoría","Medio de pago","Subtipo","Moneda","Monto","Nota"];
   const splitMedio = g => { const p=(g.medio||"").split(" · "); return [p[0]||"",p[1]||""]; };
+  const toRow = g => [g.fecha, g.empresa, g.titular||"", g.desc, g.categoria||"", ...splitMedio(g), g.moneda||"ARS", g.monto, g.nota||""];
+
+  const descargar = async (nombre) => {
+    const buf = await wb.xlsx.writeBuffer();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([buf], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
+    a.download = nombre; a.click();
+  };
+
   if (soloEmp) {
-    const rows = state.gastos.filter(g=>g.empresa===soloEmp).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(g=>[g.fecha,g.empresa,g.titular||"",g.desc,g.categoria,...splitMedio(g),g.moneda||"ARS",g.monto,g.nota||""]);
+    const rows = state.gastos.filter(g=>g.empresa===soloEmp).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(toRow);
     if (!rows.length) return showToast(`Sin gastos para ${soloEmp}`);
-    const ws = XLSX.utils.aoa_to_sheet([headers,...rows]);
-    ws["!cols"] = [12,10,22,30,18,16,16,8,12,25].map(w=>({wch:w}));
-    XLSX.utils.book_append_sheet(wb, ws, soloEmp);
-    XLSX.writeFile(wb, `gastos_${soloEmp}_${hoy()}.xlsx`);
+    const ws = wb.addWorksheet(soloEmp);
+    ws.addRow(headers); rows.forEach(r=>ws.addRow(r));
+    aplicarEstilosHoja(ws, rows);
+    await descargar(`gastos_${soloEmp}_${hoy()}.xlsx`);
     showToast(`✓ Excel ${soloEmp} exportado`);
     return;
   }
-  EMPRESAS.forEach(emp=>{
-    const rows=state.gastos.filter(g=>g.empresa===emp).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(g=>[g.fecha,g.empresa,g.titular||"",g.desc,g.categoria,...splitMedio(g),g.moneda||"ARS",g.monto,g.nota||""]);
-    const ws=XLSX.utils.aoa_to_sheet([headers,...rows]);
-    ws["!cols"]=[12,10,22,30,18,16,16,8,12,25].map(w=>({wch:w}));
-    XLSX.utils.book_append_sheet(wb,ws,emp);
+
+  EMPRESAS.forEach(emp => {
+    const rows = state.gastos.filter(g=>g.empresa===emp).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(toRow);
+    const ws = wb.addWorksheet(emp);
+    ws.addRow(headers); rows.forEach(r=>ws.addRow(r));
+    aplicarEstilosHoja(ws, rows);
   });
-  const allRows=[...state.gastos].sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(g=>[g.fecha,g.empresa,g.titular||"",g.desc,g.categoria,...splitMedio(g),g.moneda||"ARS",g.monto,g.nota||""]);
-  const wsAll=XLSX.utils.aoa_to_sheet([headers,...allRows]);
-  wsAll["!cols"]=[12,10,22,30,18,16,16,8,12,25].map(w=>({wch:w}));
-  XLSX.utils.book_append_sheet(wb,wsAll,"Todos");
-  XLSX.writeFile(wb,`gastos_${hoy()}.xlsx`);
+  const allRows = [...state.gastos].sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(toRow);
+  const wsAll = wb.addWorksheet("Todos");
+  wsAll.addRow(headers); allRows.forEach(r=>wsAll.addRow(r));
+  aplicarEstilosHoja(wsAll, allRows);
+  await descargar(`gastos_${hoy()}.xlsx`);
   showToast("✓ Excel exportado");
 }
 
-function exportarBusqueda() {
+async function exportarBusqueda() {
   const q = (state.busqueda||"").toLowerCase().trim();
   if (!q) return showToast("No hay búsqueda activa");
-  const resultados = [...state.gastos].filter(g => {
-    return (g.titular||"").toLowerCase().includes(q)
-        || (g.desc||"").toLowerCase().includes(q)
-        || (g.categoria||"").toLowerCase().includes(q)
-        || (g.fecha||"").includes(q)
-        || (g.nota||"").toLowerCase().includes(q);
-  }).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha));
+  const splitMedio = g => { const p=(g.medio||"").split(" · "); return [p[0]||"",p[1]||""]; };
+  const resultados = [...state.gastos].filter(g =>
+    (g.titular||"").toLowerCase().includes(q) || (g.desc||"").toLowerCase().includes(q)
+    || (g.categoria||"").toLowerCase().includes(q) || (g.fecha||"").includes(q)
+    || (g.nota||"").toLowerCase().includes(q)
+  ).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha));
   if (!resultados.length) return showToast("Sin resultados para exportar");
-  const headers = ["Fecha","Empresa","Titular/Comercio","Descripción","Categoría","Medio de pago","Moneda","Monto","Nota"];
-  const rows = resultados.map(g=>[g.fecha,g.empresa,g.titular||"",g.desc,g.categoria,g.medio,g.moneda||"ARS",g.monto,g.nota||""]);
-  const ws = XLSX.utils.aoa_to_sheet([headers,...rows]);
-  ws["!cols"] = [12,10,22,30,18,22,8,12,25].map(w=>({wch:w}));
-  const wb = XLSX.utils.book_new();
+
+  const headers = ["Fecha","Empresa","Titular/Comercio","Descripción","Categoría","Medio de pago","Subtipo","Moneda","Monto","Nota"];
+  const rows = resultados.map(g=>[g.fecha, g.empresa, g.titular||"", g.desc, g.categoria||"", ...splitMedio(g), g.moneda||"ARS", g.monto, g.nota||""]);
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Gastos App"; wb.created = new Date();
   const nombreHoja = (state.busqueda||"busqueda").replace(/[^a-zA-Z0-9 áéíóúñÁÉÍÓÚÑ]/g,"").trim().slice(0,28) || "Busqueda";
-  XLSX.utils.book_append_sheet(wb, ws, nombreHoja);
-  const nombreArchivo = `busqueda_${(state.busqueda||"").replace(/\s+/g,"_").slice(0,30)}_${hoy()}.xlsx`;
-  XLSX.writeFile(wb, nombreArchivo);
+  const ws = wb.addWorksheet(nombreHoja);
+  ws.addRow(headers); rows.forEach(r=>ws.addRow(r));
+  aplicarEstilosHoja(ws, rows);
+  const buf = await wb.xlsx.writeBuffer();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([buf], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
+  a.download = `busqueda_${(state.busqueda||"").replace(/\s+/g,"_").slice(0,30)}_${hoy()}.xlsx`;
+  a.click();
   showToast(`✓ Excel exportado (${resultados.length} gastos)`);
 }
 
