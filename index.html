@@ -127,6 +127,7 @@ let state = {
   vozActiva:false, vozStatus:"",
   // lista
   filtro:"Todos",
+  busqueda:"",
   // modales
   showCats:false, plantillaEnUso:null, sugerencia:null,
   // sync
@@ -433,6 +434,7 @@ function buildApp() {
     ${state.tab==="ia"       ? buildIA()        : ""}
     ${state.tab==="frecuentes"? buildFrecuentes(): ""}
     ${state.tab==="lista"    ? buildLista()     : ""}
+    ${state.tab==="buscar"   ? buildBuscar()    : ""}
     ${state.tab==="resumen"  ? buildResumen()   : ""}
     ${state.showCats         ? buildModalCats() : ""}
     ${state.plantillaEnUso   ? buildModalPlantilla() : ""}
@@ -465,7 +467,7 @@ function buildHeader() {
 }
 
 function buildTabs() {
-  const tabs = [["cargar","＋ Cargar"],["ia","✦ IA"],["frecuentes","★ Frec."],["lista","≡ Gastos"],["resumen","◈ Total"]];
+  const tabs = [["cargar","＋ Cargar"],["ia","✦ IA"],["frecuentes","★ Frec."],["lista","≡ Gastos"],["buscar","🔍 Buscar"],["resumen","◈ Total"]];
   return `<div class="tabs">${tabs.map(([id,label])=>`<button class="tab${state.tab===id?" active":""}" onclick="setTab('${id}')">${label}</button>`).join("")}</div>`;
 }
 
@@ -734,6 +736,55 @@ function buildLista() {
     </div>`).join("") : `<div style="text-align:center;padding:32px;color:var(--muted);font-size:13px">Sin gastos aún.</div>`;
 
   return `<div class="panel"><div class="filter-row">${filterBtns}</div>${items}</div>`;
+}
+
+function buildBuscar() {
+  const q = (state.busqueda||"").toLowerCase().trim();
+  const resultados = q.length < 1 ? [] : [...state.gastos].filter(g => {
+    return (g.titular||"").toLowerCase().includes(q)
+        || (g.desc||"").toLowerCase().includes(q)
+        || (g.categoria||"").toLowerCase().includes(q)
+        || (g.fecha||"").includes(q)
+        || (g.nota||"").toLowerCase().includes(q);
+  }).sort((a,b)=>new Date(b.fecha)-new Date(a.fecha));
+
+  const items = q.length < 1
+    ? `<div style="text-align:center;padding:32px;color:var(--muted);font-size:13px">Escribí algo para buscar...</div>`
+    : resultados.length === 0
+      ? `<div style="text-align:center;padding:32px;color:var(--muted);font-size:13px">Sin resultados para "<b>${esc(state.busqueda)}</b>"</div>`
+      : resultados.map(g=>`
+    <div class="gasto-item">
+      <div class="dot" style="background:${EMP[g.empresa]?.border||"#666"}"></div>
+      <div style="flex:1;min-width:0">
+        <div class="gasto-desc">${g.titular?esc(g.titular):esc(g.desc)}</div>
+        <div class="gasto-meta">${g.fecha.split("-").reverse().join("/")} · ${g.empresa} · ${g.medio||"—"}${g.titular?" · "+esc(g.desc):""}</div>
+        ${g.categoria?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(g.categoria)}</div>`:""}
+        ${g.nota?`<div class="gasto-nota">${esc(g.nota)}</div>`:""}
+      </div>
+      <div class="gasto-monto">
+        <div>${fmtMonto(g.monto,g.moneda)}</div>
+        ${g.moneda&&g.moneda!=="ARS"?`<div style="font-size:10px;color:var(--muted)">${g.moneda}</div>`:""}
+      </div>
+      <button class="btn-icon" onclick="editarGasto(${g.id})" title="Editar">✎</button>
+      <button class="btn-icon" onclick="eliminarGasto(${g.id})">✕</button>
+    </div>`).join("");
+
+  const countMsg = q.length > 0 && resultados.length > 0
+    ? `<div style="font-size:12px;color:var(--muted);margin-bottom:10px">${resultados.length} resultado${resultados.length!==1?"s":""}</div>`
+    : "";
+
+  return `<div class="panel">
+    <input
+      type="text"
+      value="${esc(state.busqueda)}"
+      oninput="state.busqueda=this.value;render()"
+      placeholder="Buscar por titular, descripción, categoría, fecha, nota..."
+      style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--fg);font-size:14px;box-sizing:border-box;margin-bottom:12px;outline:none"
+      autofocus
+    >
+    ${countMsg}
+    ${items}
+  </div>`;
 }
 
 function buildResumen() {
