@@ -517,6 +517,7 @@ function buildModalEditarGasto() {
   const m = state._editMedio !== undefined ? state._editMedio : (partesMedio[0]||null);
   const sm = state._editSubMedio !== undefined ? state._editSubMedio : (partesMedio[1]||null);
   const eDesc = state._editDesc !== undefined ? state._editDesc : (g.desc||"");
+  const eTitular = state._editTitular !== undefined ? state._editTitular : (g.titular||"");
   const eMonto = state._editMonto !== undefined ? state._editMonto : (g.monto||"");
   const eMoneda = state._editMoneda !== undefined ? state._editMoneda : (g.moneda||"ARS");
   const eFecha = state._editFecha !== undefined ? state._editFecha : (g.fecha||hoy());
@@ -532,6 +533,7 @@ function buildModalEditarGasto() {
         <button onclick="cerrarEditarGasto()" style="background:none;border:none;color:var(--muted);font-size:20px">✕</button>
       </div>
       <div class="field"><span class="label">Empresa</span>${buildEmpGrid(eEmp,"setEditEmpresa")}</div>
+      <div class="field"><span class="label">Titular / Comercio</span><input value="${esc(eTitular)}" oninput="state._editTitular=this.value" placeholder="Ej: YPF, Mercado Libre..."></div>
       <div class="field"><span class="label">Descripción</span><input value="${esc(eDesc)}" oninput="state._editDesc=this.value"></div>
       <div class="row2">
         <div class="field"><span class="label">Monto</span><input type="number" value="${eMonto}" oninput="state._editMonto=this.value" step="0.01"></div>
@@ -1084,7 +1086,7 @@ function editarGasto(id) {
   if(g) { clearEditState(); setState({gastoEditando:g}); }
 }
 function clearEditState() {
-  ["_editDesc","_editMonto","_editMoneda","_editFecha","_editMedio","_editSubMedio","_editCat","_editNota","_editEmpresa"].forEach(k=>delete state[k]);
+  ["_editDesc","_editTitular","_editMonto","_editMoneda","_editFecha","_editMedio","_editSubMedio","_editCat","_editNota","_editEmpresa"].forEach(k=>delete state[k]);
 }
 function cerrarEditarGasto() { clearEditState(); setState({gastoEditando:null}); }
 function setEditEmpresa(e) { state._editEmpresa=e; render(); }
@@ -1101,6 +1103,7 @@ function guardarEdicion() {
     ...g,
     empresa: emp,
     desc: (state._editDesc!==undefined?state._editDesc:g.desc)||"Sin descripción",
+    titular: state._editTitular!==undefined?state._editTitular:(g.titular||""),
     monto: parseFloat(state._editMonto!==undefined?state._editMonto:g.monto)||0,
     moneda: state._editMoneda!==undefined?state._editMoneda:(g.moneda||"ARS"),
     fecha: state._editFecha!==undefined?state._editFecha:g.fecha,
