@@ -836,7 +836,7 @@ function buildResumen() {
       const t = eg.filter(g=>(g.moneda||"ARS")===mon).reduce((s,g)=>s+g.monto,0);
       return t > 0 ? `<div style="font-family:monospace;font-size:14px;font-weight:500;color:${c.text}">${fmtMonto(t,mon)}</div>` : "";
     }).filter(Boolean).join("");
-    return `<div class="res-card" style="border:1px solid ${c.border}55;background:${c.bg}">
+    return `<div class="res-card" onclick="setFiltro('${e}');setTab('lista')" style="border:1px solid ${c.border}55;background:${c.bg};cursor:pointer">
       <div style="font-size:10px;font-family:monospace;color:var(--muted);text-transform:uppercase;margin-bottom:6px">${e}</div>
       ${totalesPorMoneda || `<div style="font-size:12px;color:var(--muted)">Sin gastos</div>`}
       <div style="font-size:11px;color:var(--muted);margin-top:6px">${eg.length} gasto${eg.length!==1?"s":""}</div>
