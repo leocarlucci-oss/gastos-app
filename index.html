@@ -77,6 +77,7 @@ button{cursor:pointer;}
 </head>
 <body>
 <div class="app" id="app"></div>
+<div id="modal-root"></div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -430,6 +431,8 @@ function render() {
   const app = document.getElementById("app");
   app.innerHTML = buildApp();
   attachEvents();
+  const modalRoot = document.getElementById("modal-root");
+  modalRoot.innerHTML = state.gastoEditando ? buildModalEditarGasto() : "";
 }
 
 // ── HTML builders ─────────────────────────────────────────────
@@ -446,7 +449,6 @@ function buildApp() {
     ${state.tab==="resumen"  ? buildResumen()   : ""}
     ${state.showCats         ? buildModalCats() : ""}
     ${state.plantillaEnUso   ? buildModalPlantilla() : ""}
-    ${state.gastoEditando    ? buildModalEditarGasto() : ""}
   `;
 }
 
@@ -1039,13 +1041,13 @@ function agregarGasto() {
 }
 
 function eliminarGasto(id) {
-  state.gastos=state.gastos.filter(g=>g.id!=id);
+  state.gastos=state.gastos.filter(g=>String(g.id)!==String(id));
   state.deletedIds=[...(state.deletedIds||[]),id];
   saveAll(); render();
 }
 
 function guardarPlantilla(id) {
-  const g = state.gastos.find(x=>x.id==id);
+  const g = state.gastos.find(x=>String(x.id)===String(id));
   if(!g) return;
   if(state.plantillas.find(p=>p.empresa===g.empresa&&p.desc===g.desc)) return showToast("Ya existe en plantillas");
   state.plantillas = [...state.plantillas,{...g,plantillaId:Date.now()}];
@@ -1206,8 +1208,9 @@ function confirmarIA() {
 
 // Excel
 function editarGasto(id) {
-  const g = state.gastos.find(x=>x.id==id);
+  const g = state.gastos.find(x=>String(x.id)===String(id));
   if(g) { clearEditState(); setState({gastoEditando:g}); }
+  else { console.warn("editarGasto: no se encontró id="+id, state.gastos.map(x=>x.id)); }
 }
 function clearEditState() {
   ["_editDesc","_editTitular","_editMonto","_editMoneda","_editFecha","_editMedio","_editSubMedio","_editCat","_editNota","_editEmpresa"].forEach(k=>delete state[k]);
