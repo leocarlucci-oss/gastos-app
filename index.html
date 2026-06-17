@@ -95,6 +95,9 @@ const MEDIOS = {
   "TC EUR": {color:"#FCD34D",sub:["Santander débito","Caixabank débito"]},
   Cash:     {color:"#FB923C",sub:["ARS","U$S","Euros","CLP"]},
   MP:       {color:"#60A5FA",sub:["MP LC","MP C2","MP AK"]},
+  PayPal:   {color:"#003087",sub:["USD","EUR","ARS"]},
+  Bizum:    {color:"#00CFFF",sub:[]},
+  Zelle:    {color:"#6D1ED4",sub:[]},
 };
 
 const EMP = {
@@ -1009,7 +1012,7 @@ async function procesarIA() {
   if(!state.iaSplitMode&&!state.empIA) return showToast("⚠ Seleccioná empresa");
   setState({iaLoading:true,iaResult:null});
   try {
-    const prompt = (state.textoLibre?`Texto: "${state.textoLibre}". `:"") + `Extraé: titular (nombre del comercio/proveedor), desc (concepto del gasto), monto (número), moneda (ARS/U$S/Euros/CLP), fecha (YYYY-MM-DD o null), medio (Tx/TC ARS/TC U$S/TC EUR/Cash/MP), subMedio (o null), categoria (una de: ${state.categorias.join("/")}). Solo JSON sin backticks.`;
+    const prompt = (state.textoLibre?`Texto: "${state.textoLibre}". `:"") + `Extraé: titular (nombre del comercio/proveedor), desc (concepto del gasto), monto (número), moneda (ARS/U$S/Euros/CLP), fecha (YYYY-MM-DD o null), medio (Tx/TC ARS/TC U$S/TC EUR/Cash/MP/PayPal/Bizum/Zelle), subMedio (o null), categoria (una de: ${state.categorias.join("/")}). Solo JSON sin backticks.`;
     let messages;
     if(state.imgB64) {
       messages=[{role:"user",content:[{type:"image",source:{type:"base64",media_type:state.imgMime||"image/jpeg",data:state.imgB64}},{type:"text",text:prompt}]}];
