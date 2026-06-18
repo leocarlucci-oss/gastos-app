@@ -629,7 +629,7 @@ function buildModalEditarGasto() {
         <button onclick="cerrarEditarGasto()" style="background:none;border:none;color:var(--muted);font-size:20px">✕</button>
       </div>
       <div class="field"><span class="label">Empresa</span>${buildEmpGrid(eEmp,"setEditEmpresa")}</div>
-      <div class="field"><span class="label">Titular / Comercio</span><input value="${esc(eTitular)}" oninput="state._editTitular=this.value" placeholder="Ej: YPF, Mercado Libre..."></div>
+      <div class="field"><span class="label">Titular / Comercio</span><input value="${esc(eTitular)}" oninput="state._editTitular=this.value" onfocus="this.select()" placeholder="Ej: YPF, Mercado Libre..." list="datalist-titulares" autocomplete="off"></div>
       <div class="field"><span class="label">Descripción</span><input value="${esc(eDesc)}" oninput="state._editDesc=this.value"></div>
       <div class="field"><span class="label">Categoría</span><select onchange="state._editCat=this.value"><option value="">Seleccioná...</option>${catOpts}</select></div>
       <div class="row2">
@@ -1207,64 +1207,21 @@ function handleFile(input) {
 
 // Voz
 let recognition = null;
-let _vozRestartOk = false;
-let _vozSilenceTimer = null;
-
 function iniciarVoz() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if(!SR) { showToast("⚠ Usá el dictado del teclado"); return; }
-
-  _vozRestartOk = true;
-  _crearRecognition(SR);
+  recognition = new SR();
+  recognition.lang="es-AR"; recognition.continuous=false; recognition.interimResults=true;
+  recognition.onstart = ()=>setState({vozActiva:true,vozStatus:"escuchando"});
+  recognition.onresult = e=>{
+    const t=Array.from(e.results).map(r=>r[0].transcript).join("");
+    state.textoLibre=t; state.vozStatus=e.results[e.results.length-1].isFinal?"listo":"escuchando"; render();
+  };
+  recognition.onerror = e=>{setState({vozActiva:false,vozStatus:"error"}); showToast("Error mic: "+e.error);};
+  recognition.onend = ()=>setState({vozActiva:false});
   recognition.start();
 }
-
-function _crearRecognition(SR) {
-  if (!SR) SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  recognition = new SR();
-  recognition.lang = "es-AR";
-  recognition.continuous = true;
-  recognition.interimResults = true;
-
-  recognition.onstart = () => setState({vozActiva:true, vozStatus:"escuchando"});
-
-  recognition.onresult = e => {
-    // Resetear timer de silencio cada vez que llega audio
-    clearTimeout(_vozSilenceTimer);
-    _vozSilenceTimer = setTimeout(() => {
-      if (state.vozActiva) detenerVoz();
-    }, 4000); // Para solo después de 4 seg de silencio
-
-    const t = Array.from(e.results).map(r => r[0].transcript).join("");
-    state.textoLibre = t;
-    state.vozStatus = e.results[e.results.length-1].isFinal ? "listo" : "escuchando";
-    render();
-  };
-
-  recognition.onerror = e => {
-    if (e.error === "no-speech" || e.error === "aborted") return; // ignorar, va a reiniciar
-    setState({vozActiva:false, vozStatus:"error"});
-    showToast("Error mic: " + e.error);
-    _vozRestartOk = false;
-  };
-
-  recognition.onend = () => {
-    // En mobile el browser corta solo — reiniciar si el usuario no detuvo manualmente
-    if (_vozRestartOk && state.vozActiva) {
-      try { recognition.start(); } catch(e) {}
-    } else {
-      clearTimeout(_vozSilenceTimer);
-      setState({vozActiva:false});
-    }
-  };
-}
-
-function detenerVoz() {
-  _vozRestartOk = false;
-  clearTimeout(_vozSilenceTimer);
-  if (recognition) recognition.stop();
-  setState({vozActiva:false});
-}
+function detenerVoz() { if(recognition) recognition.stop(); setState({vozActiva:false}); }
 
 // IA
 async function procesarIA() {
