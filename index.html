@@ -256,6 +256,56 @@ async function uploadDriveData(data) {
   return { status: res.status, ok: res.ok };
 }
 
+async function hacerBackupDiario(data) {
+  try {
+    const hoyStr = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+    const lastBackup = localStorage.getItem("last_backup_date");
+    if (lastBackup === hoyStr) return; // Ya se hizo el backup hoy
+
+    const backupName = `gastos_app_backup_${hoyStr}.json`;
+    const content = JSON.stringify({ ...data, backupDate: hoyStr });
+
+    // Crear el archivo de backup del día
+    const meta = await fetch("https://www.googleapis.com/drive/v3/files", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${state.driveToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: backupName, mimeType: "application/json" })
+    });
+    if (!meta.ok) return;
+    const metaData = await meta.json();
+    await fetch(`https://www.googleapis.com/upload/drive/v3/files/${metaData.id}?uploadType=media`, {
+      method: "PATCH",
+      headers: { "Authorization": `Bearer ${state.driveToken}`, "Content-Type": "application/json" },
+      body: content
+    });
+
+    localStorage.setItem("last_backup_date", hoyStr);
+
+    // Limpiar backups con más de 30 días
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+    const cutoffStr = cutoff.toISOString().split("T")[0];
+    const search = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=name+contains+'gastos_app_backup_'+and+trashed=false&fields=files(id,name)`,
+      { headers: { "Authorization": `Bearer ${state.driveToken}` } }
+    );
+    if (search.ok) {
+      const { files } = await search.json();
+      for (const f of (files || [])) {
+        const match = f.name.match(/gastos_app_backup_(\d{4}-\d{2}-\d{2})\.json/);
+        if (match && match[1] < cutoffStr) {
+          await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}`, {
+            method: "DELETE",
+            headers: { "Authorization": `Bearer ${state.driveToken}` }
+          });
+        }
+      }
+    }
+  } catch(e) {
+    console.warn("Backup diario falló (no crítico):", e);
+  }
+}
+
 async function syncToDrive() {
   if (!driveEnabled()) return;
   const ok = await ensureValidToken();
@@ -293,7 +343,7 @@ async function syncToDrive() {
       localStorage.setItem("plants_v5", JSON.stringify(state.plantillas));
     }
 
-    // 3. Subir el resultado mergeado
+    // 3. Backup diario y subir el resultado mergeado
     const toUpload = {
       gastos: state.gastos,
       categorias: state.categorias,
@@ -301,6 +351,7 @@ async function syncToDrive() {
       deletedIds: state.deletedIds,
       lastSync: new Date().toISOString()
     };
+    await hacerBackupDiario(toUpload);
     const uploaded = await uploadDriveData(toUpload);
     if (uploaded.status === 401) { handleTokenExpired(); return; }
     if (!uploaded.ok) throw new Error("HTTP " + uploaded.status);
