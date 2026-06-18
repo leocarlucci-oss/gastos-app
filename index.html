@@ -71,6 +71,11 @@ button{cursor:pointer;}
 .cat-item{display:flex;align-items:center;gap:8px;background:var(--bg);border-radius:8px;padding:8px 12px;border:1px solid var(--border);margin-bottom:6px;}
 .plantilla-item{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:10px;margin-bottom:8px;}
 .res-card{border-radius:10px;padding:14px;}
+.ac-wrap{position:relative;}
+.ac-dropdown{position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;z-index:500;max-height:200px;overflow-y:auto;margin-top:2px;box-shadow:0 4px 16px rgba(0,0,0,.4);}
+.ac-item{padding:10px 14px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--border);}
+.ac-item:last-child{border-bottom:none;}
+.ac-item:hover,.ac-item.ac-active{background:var(--accent);color:#fff;}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 @keyframes spin{to{transform:rotate(360deg)}}
 </style>
@@ -486,6 +491,47 @@ function getTitularesConocidos() {
   return [...set].sort((a, b) => a.localeCompare(b));
 }
 
+function acTitular(inputEl, dropdownId) {
+  if (typeof inputEl === "string") inputEl = document.getElementById(inputEl);
+  if (!inputEl) return;
+  const q = (inputEl.value || "").toLowerCase();
+  const todos = getTitularesConocidos();
+  const filtrados = q.length === 0
+    ? todos
+    : todos.filter(t => t.toLowerCase().includes(q));
+  const dd = document.getElementById(dropdownId);
+  if (!dd) return;
+  if (filtrados.length === 0) { dd.style.display = "none"; return; }
+  dd.innerHTML = filtrados.map(t =>
+    `<div class="ac-item" onmousedown="acElegir(event,'${dropdownId}')">${esc(t)}</div>`
+  ).join("");
+  dd.style.display = "block";
+}
+
+function acElegir(e, dropdownId) {
+  e.preventDefault();
+  const val = e.target.textContent;
+  const dd = document.getElementById(dropdownId);
+  if (!dd) return;
+  // Actualizar el input correspondiente y el state
+  if (dropdownId === "ac-cargar") {
+    state.titular = val;
+    const inp = document.getElementById("inp-titular");
+    if (inp) inp.value = val;
+  } else {
+    state._editTitular = val;
+    // Buscar el input dentro del mismo contenedor
+    const inp = dd.previousElementSibling;
+    if (inp) inp.value = val;
+  }
+  dd.style.display = "none";
+}
+
+function acCerrar(dropdownId) {
+  const dd = document.getElementById(dropdownId);
+  if (dd) dd.style.display = "none";
+}
+
 function splitSum(parts) { return parts.reduce((s,p)=>s+(parseFloat(p.pct)||0),0); }
 
 function detectarFrecuentes() {
@@ -629,7 +675,7 @@ function buildModalEditarGasto() {
         <button onclick="cerrarEditarGasto()" style="background:none;border:none;color:var(--muted);font-size:20px">✕</button>
       </div>
       <div class="field"><span class="label">Empresa</span>${buildEmpGrid(eEmp,"setEditEmpresa")}</div>
-      <div class="field"><span class="label">Titular / Comercio</span><input value="${esc(eTitular)}" oninput="state._editTitular=this.value" onfocus="this.select()" placeholder="Ej: YPF, Mercado Libre..." list="datalist-titulares" autocomplete="off"></div>
+      <div class="field"><span class="label">Titular / Comercio</span><div class="ac-wrap"><input value="${esc(eTitular)}" oninput="state._editTitular=this.value;acTitular(this,'ac-modal')" onfocus="this.select();acTitular(this,'ac-modal')" onblur="setTimeout(()=>acCerrar('ac-modal'),200)" placeholder="Ej: YPF, Mercado Libre..." autocomplete="off"><div id="ac-modal" class="ac-dropdown" style="display:none"></div></div></div>
       <div class="field"><span class="label">Descripción</span><input value="${esc(eDesc)}" oninput="state._editDesc=this.value"></div>
       <div class="field"><span class="label">Categoría</span><select onchange="state._editCat=this.value"><option value="">Seleccioná...</option>${catOpts}</select></div>
       <div class="row2">
@@ -662,8 +708,10 @@ function buildCargar() {
       : `<div class="field"><span class="label">División</span>${buildSplitEditor(state.splitParts,"updateSplit","addSplit","eqSplit")}</div>`}
     <div class="field">
       <span class="label">Titular / Comercio</span>
-      <input id="inp-titular" value="${esc(state.titular)}" oninput="state.titular=this.value" placeholder="Ej: YPF, Mercado Libre, Farmacity..." list="datalist-titulares" autocomplete="off">
-      <datalist id="datalist-titulares">${getTitularesConocidos().map(t=>`<option value="${esc(t)}">`).join("")}</datalist>
+      <div class="ac-wrap">
+        <input id="inp-titular" value="${esc(state.titular)}" oninput="state.titular=this.value;acTitular('inp-titular','ac-cargar')" onfocus="acTitular('inp-titular','ac-cargar')" onblur="setTimeout(()=>acCerrar('ac-cargar'),200)" placeholder="Ej: YPF, Mercado Libre, Farmacity..." autocomplete="off">
+        <div id="ac-cargar" class="ac-dropdown" style="display:none"></div>
+      </div>
     </div>
     <div class="field">
       <span class="label">Descripción</span>
