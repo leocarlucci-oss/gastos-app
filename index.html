@@ -112,7 +112,7 @@ const EMP = {
 // ── Estado global ─────────────────────────────────────────────
 let state = {
   tab: "cargar",
-  gastos: load("gastos_v5", []),
+  gastos: sanearIds(load("gastos_v5", [])),
   categorias: load("cats_v5", CATEGORIAS_DEFAULT),
   plantillas: load("plants_v5", []),
   // form
@@ -144,6 +144,24 @@ let state = {
 
 function load(key, def) {
   try { return JSON.parse(localStorage.getItem(key)) || def; } catch { return def; }
+}
+
+function sanearIds(gastos) {
+  let modified = false;
+  let autoId = Date.now();
+  const seen = new Set();
+  const result = gastos.map(g => {
+    if (!g.id || seen.has(String(g.id))) {
+      g = { ...g, id: autoId++ };
+      modified = true;
+    }
+    seen.add(String(g.id));
+    return g;
+  });
+  if (modified) {
+    localStorage.setItem("gastos_v5", JSON.stringify(result));
+  }
+  return result;
 }
 
 function saveAll() {
