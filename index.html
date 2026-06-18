@@ -269,7 +269,15 @@ async function syncToDrive() {
     const driveData = fetched.data || {};
 
     // 2. Mergear con lo local
-    const { merged, allDeletedIds } = mergeGastos(driveData.gastos, state.gastos, driveData.deletedIds, state.deletedIds);
+    // Guardia: si Drive devuelve 0 gastos pero tenemos datos locales, es sospechoso — no tocar Drive
+    const driveGastosRaw = driveData.gastos;
+    if (Array.isArray(driveGastosRaw) && driveGastosRaw.length === 0 && state.gastos.length > 0) {
+      console.warn("Drive devolvió 0 gastos pero hay " + state.gastos.length + " locales — sync abortado por seguridad");
+      setState({syncStatus:"error"}, false);
+      localStorage.setItem("pending_sync", "1");
+      return;
+    }
+    const { merged, allDeletedIds } = mergeGastos(driveGastosRaw, state.gastos, driveData.deletedIds, state.deletedIds);
     state.gastos = merged;
     state.deletedIds = allDeletedIds;
     localStorage.setItem("gastos_v5", JSON.stringify(state.gastos));
