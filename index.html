@@ -860,31 +860,12 @@ function buildFrecuentes() {
       </div>`).join("")
     : `<div style="text-align:center;padding:20px 0;color:var(--muted);font-size:13px">Guardá un gasto como plantilla desde ≡ Gastos tocando ★</div>`;
 
-  const auto = detectarFrecuentes();
-  const plantIds = new Set(state.plantillas.map(p=>p.id||p.plantillaId));
-  const autoHTML = auto.length ? `
-    <div class="panel">
-      <span class="label">⟳ Detectados automáticamente</span>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Gastos que repetís frecuentemente</div>
-      ${auto.map(g=>`
-        <div class="plantilla-item">
-          <div class="dot" style="background:${EMP[g.empresa]?.border||"#666"}"></div>
-          <div style="flex:1;min-width:0">
-            ${g.titular?`<div class="gasto-desc">${esc(g.titular)}</div>`:""}
-            <div class="${g.titular?"gasto-meta":"gasto-desc"}">${esc(g.desc)}</div>
-            <div class="gasto-meta">${g.empresa} · ${g.medio||"—"}</div>
-          </div>
-          <button onclick="usarPlantilla_auto(${g.id})" style="padding:5px 12px;border-radius:6px;background:rgba(56,189,248,.1);border:1px solid #38BDF8;color:#38BDF8;font-size:12px;flex-shrink:0">Usar</button>
-          <button onclick="guardarPlantilla(${g.id})" style="padding:5px 10px;border-radius:6px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);color:var(--accent);font-size:11px;flex-shrink:0">★ Guardar</button>
-        </div>`).join("")}
-    </div>` : "";
 
   return `
     <div class="panel">
       <span class="label">★ Mis plantillas</span>
       ${plantillasHTML}
-    </div>
-    ${autoHTML}`;
+    </div>`;
 }
 
 function buildLista() {
