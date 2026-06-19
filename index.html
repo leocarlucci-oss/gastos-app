@@ -119,6 +119,7 @@ let state = {
   tab: "cargar",
   gastos: sanearIds(load("gastos_v5", [])),
   categorias: load("cats_v5", CATEGORIAS_DEFAULT),
+  deletedCategorias: load("deleted_cats_v1", []),
   plantillas: load("plants_v5", []),
   deletedPlantillaIds: load("deleted_plants_v1", []),
   // form
@@ -339,9 +340,17 @@ async function syncToDrive() {
     localStorage.setItem("gastos_v5", JSON.stringify(state.gastos));
     localStorage.setItem("deleted_ids_v1", JSON.stringify(state.deletedIds));
 
-    // Categorías: el más reciente en cantidad gana (simplificado)
-    if (driveData.categorias && driveData.categorias.length > state.categorias.length) {
-      state.categorias = driveData.categorias;
+    // Categorías: merge respetando eliminadas localmente
+    {
+      const driveDeletedCats = driveData.deletedCategorias || [];
+      const allDeletedCats = [...new Set([...state.deletedCategorias, ...driveDeletedCats])];
+      state.deletedCategorias = allDeletedCats;
+      localStorage.setItem("deleted_cats_v1", JSON.stringify(allDeletedCats));
+
+      const driveCats = (driveData.categorias || []).filter(c => !allDeletedCats.includes(c));
+      const localCats = state.categorias.filter(c => !allDeletedCats.includes(c));
+      const mergedCats = [...new Set([...localCats, ...driveCats])];
+      state.categorias = mergedCats;
       localStorage.setItem("cats_v5", JSON.stringify(state.categorias));
     }
     // Plantillas: merge respetando eliminadas localmente
@@ -353,11 +362,11 @@ async function syncToDrive() {
 
       const drivePlants = (driveData.plantillas || []).filter(p => {
         const pid = p.plantillaId || p.id;
-        return !allDeletedPlants.includes(pid);
+        return !allDeletedPlants.includes(pid) && !allDeletedPlants.includes(Number(pid));
       });
       const localPlants = state.plantillas.filter(p => {
         const pid = p.plantillaId || p.id;
-        return !allDeletedPlants.includes(pid);
+        return !allDeletedPlants.includes(pid) && !allDeletedPlants.includes(Number(pid));
       });
       // Unir sin duplicados
       const merged = [...localPlants];
@@ -376,6 +385,7 @@ async function syncToDrive() {
       plantillas: state.plantillas,
       deletedIds: state.deletedIds,
       deletedPlantillaIds: state.deletedPlantillaIds,
+      deletedCategorias: state.deletedCategorias,
       lastSync: new Date().toISOString()
     };
     await hacerBackupDiario(toUpload);
@@ -1209,8 +1219,12 @@ function guardarPlantilla(id) {
 }
 
 function eliminarPlantilla(id) {
-  state.plantillas = state.plantillas.filter(p=>p.id!==id&&p.plantillaId!==id);
-  state.deletedPlantillaIds = [...new Set([...state.deletedPlantillaIds, id])];
+  const nid = Number(id);
+  state.plantillas = state.plantillas.filter(p => {
+    const pid = p.plantillaId || p.id;
+    return pid !== nid && pid !== id;
+  });
+  state.deletedPlantillaIds = [...new Set([...state.deletedPlantillaIds, nid])];
   localStorage.setItem("deleted_plants_v1", JSON.stringify(state.deletedPlantillaIds));
   saveAll(); render();
 }
@@ -1262,7 +1276,15 @@ function confirmarPlantilla() {
 
 // Categorías
 function addCat() { const v=document.getElementById("nueva-cat").value.trim(); if(!v||state.categorias.includes(v))return; state.categorias=[...state.categorias,v]; saveAll(); render(); }
-function delCat(i) { state.categorias=state.categorias.filter((_,j)=>j!==i); saveAll(); render(); }
+function delCat(i) {
+  const removed = state.categorias[i];
+  state.categorias = state.categorias.filter((_,j)=>j!==i);
+  if (removed) {
+    state.deletedCategorias = [...new Set([...state.deletedCategorias, removed])];
+    localStorage.setItem("deleted_cats_v1", JSON.stringify(state.deletedCategorias));
+  }
+  saveAll(); render();
+}
 function editCat(i) {
   const v = prompt("Renombrar categoría:", state.categorias[i]);
   if(v&&v.trim()) { state.categorias=state.categorias.map((c,j)=>j===i?v.trim():c); saveAll(); render(); }
