@@ -361,12 +361,10 @@ async function syncToDrive() {
       localStorage.setItem("deleted_plants_v1", JSON.stringify(allDeletedPlants));
 
       const drivePlants = (driveData.plantillas || []).filter(p => {
-        const pid = p.plantillaId || p.id;
-        return !allDeletedPlants.includes(pid) && !allDeletedPlants.includes(Number(pid));
+        return !allDeletedPlants.includes(Number(p.id)) && !allDeletedPlants.includes(Number(p.plantillaId));
       });
       const localPlants = state.plantillas.filter(p => {
-        const pid = p.plantillaId || p.id;
-        return !allDeletedPlants.includes(pid) && !allDeletedPlants.includes(Number(pid));
+        return !allDeletedPlants.includes(Number(p.id)) && !allDeletedPlants.includes(Number(p.plantillaId));
       });
       // Unir sin duplicados
       const merged = [...localPlants];
@@ -1220,11 +1218,17 @@ function guardarPlantilla(id) {
 
 function eliminarPlantilla(id) {
   const nid = Number(id);
+  // Buscar la plantilla para guardar ambos IDs como tombstone
+  const target = state.plantillas.find(p => p.id === nid || p.plantillaId === nid || p.id === id || p.plantillaId === id);
   state.plantillas = state.plantillas.filter(p => {
-    const pid = p.plantillaId || p.id;
-    return pid !== nid && pid !== id;
+    return p.id !== nid && p.plantillaId !== nid && p.id !== id && p.plantillaId !== id;
   });
-  state.deletedPlantillaIds = [...new Set([...state.deletedPlantillaIds, nid])];
+  const tombstones = [nid];
+  if (target) {
+    if (target.id) tombstones.push(Number(target.id));
+    if (target.plantillaId) tombstones.push(Number(target.plantillaId));
+  }
+  state.deletedPlantillaIds = [...new Set([...state.deletedPlantillaIds, ...tombstones])];
   localStorage.setItem("deleted_plants_v1", JSON.stringify(state.deletedPlantillaIds));
   saveAll(); render();
 }
