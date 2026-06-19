@@ -120,6 +120,7 @@ let state = {
   gastos: sanearIds(load("gastos_v5", [])),
   categorias: load("cats_v5", CATEGORIAS_DEFAULT),
   plantillas: load("plants_v5", []),
+  deletedPlantillaIds: load("deleted_plants_v1", []),
   // form
   empresa: null, desc:"", titular:"", monto:"", moneda:"ARS", fecha:hoy(),
   medio:null, subMedio:null, categoria:"", nota:"",
@@ -338,13 +339,33 @@ async function syncToDrive() {
     localStorage.setItem("gastos_v5", JSON.stringify(state.gastos));
     localStorage.setItem("deleted_ids_v1", JSON.stringify(state.deletedIds));
 
-    // Categorías y plantillas: el más reciente en cantidad gana (simplificado)
+    // Categorías: el más reciente en cantidad gana (simplificado)
     if (driveData.categorias && driveData.categorias.length > state.categorias.length) {
       state.categorias = driveData.categorias;
       localStorage.setItem("cats_v5", JSON.stringify(state.categorias));
     }
-    if (driveData.plantillas && driveData.plantillas.length > state.plantillas.length) {
-      state.plantillas = driveData.plantillas;
+    // Plantillas: merge respetando eliminadas localmente
+    {
+      const driveDeleted = driveData.deletedPlantillaIds || [];
+      const allDeletedPlants = [...new Set([...state.deletedPlantillaIds, ...driveDeleted])];
+      state.deletedPlantillaIds = allDeletedPlants;
+      localStorage.setItem("deleted_plants_v1", JSON.stringify(allDeletedPlants));
+
+      const drivePlants = (driveData.plantillas || []).filter(p => {
+        const pid = p.plantillaId || p.id;
+        return !allDeletedPlants.includes(pid);
+      });
+      const localPlants = state.plantillas.filter(p => {
+        const pid = p.plantillaId || p.id;
+        return !allDeletedPlants.includes(pid);
+      });
+      // Unir sin duplicados
+      const merged = [...localPlants];
+      for (const dp of drivePlants) {
+        const pid = dp.plantillaId || dp.id;
+        if (!merged.find(lp => (lp.plantillaId || lp.id) === pid)) merged.push(dp);
+      }
+      state.plantillas = merged;
       localStorage.setItem("plants_v5", JSON.stringify(state.plantillas));
     }
 
@@ -354,6 +375,7 @@ async function syncToDrive() {
       categorias: state.categorias,
       plantillas: state.plantillas,
       deletedIds: state.deletedIds,
+      deletedPlantillaIds: state.deletedPlantillaIds,
       lastSync: new Date().toISOString()
     };
     await hacerBackupDiario(toUpload);
@@ -1188,6 +1210,8 @@ function guardarPlantilla(id) {
 
 function eliminarPlantilla(id) {
   state.plantillas = state.plantillas.filter(p=>p.id!==id&&p.plantillaId!==id);
+  state.deletedPlantillaIds = [...new Set([...state.deletedPlantillaIds, id])];
+  localStorage.setItem("deleted_plants_v1", JSON.stringify(state.deletedPlantillaIds));
   saveAll(); render();
 }
 
