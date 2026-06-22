@@ -104,6 +104,8 @@ const MEDIOS = {
   PayPal:   {color:"#003087",sub:[]},
   Bizum:    {color:"#00CFFF",sub:[]},
   Zelle:    {color:"#6D1ED4",sub:["LC Citi","LC Chase","Carb Fl","Carb De","Nafy De","Nafy Fl"]},
+  "E-cheque":{color:"#10B981",sub:[]},
+  "TC Cuotas":{color:"#C084FC",sub:["Mastercard Supervielle Leandro","Mastercard BBVA Leandro","Mastercard Ciudad Mama","AMEX Leandro","Visa Santander Leandro","Visa BBVA Leandro","Visa BBVA Mama","Mastercard BBVA Mamá","Visa Ciudad Mama","AMEX Santander Leandro","Mastercard Ciudad Leandro","Mercadopago Master","VISA MACRO","AMEX MACRO","Visa Supervielle Leandro","Mastercard Cencosud Leandro","Visa GALICIA","MC Galicia"]},
 };
 
 const EMP = {
@@ -124,7 +126,7 @@ let state = {
   deletedPlantillaIds: load("deleted_plants_v1", []),
   // form
   empresa: null, desc:"", titular:"", monto:"", moneda:"ARS", fecha:hoy(),
-  medio:null, subMedio:null, categoria:"", nota:"",
+  medio:null, subMedio:null, categoria:"", nota:"", cantCuotas:"",
   splitMode:false, splitParts:[{empresa:null,pct:50},{empresa:null,pct:50}],
   // ia
   empIA:null, textoLibre:"", iaLoading:false, iaResult:null,
@@ -512,6 +514,7 @@ function fmtMonto(n, m) {
 }
 
 function medioStr(m, sm) { return m?(sm?`${m} · ${sm}`:m):null; }
+function esCuotasMode(medio){return medio==="E-cheque"||medio==="TC Cuotas";}
 function getTitularesConocidos() {
   const set = new Set(
     state.gastos
@@ -714,6 +717,7 @@ function buildModalEditarGasto() {
       </div>
       <div class="field"><span class="label">Fecha</span><input type="date" value="${eFecha}" onchange="state._editFecha=this.value"></div>
       <div class="field"><span class="label">Medio de pago</span>${buildMedioPicker(m,sm,"setEditMedio","setEditSubMedio")}</div>
+      ${(()=>{const eM2=m||"";return esCuotasMode(eM2)?`<div class="row2"><div class="field"><span class="label">${eM2==="E-cheque"?"Cantidad de cheques":"Cantidad de cuotas"}</span><input type="number" min="1" step="1" value="${state._editCantCuotas!==undefined?state._editCantCuotas:(g.cantCuotas||"")}" oninput="state._editCantCuotas=this.value;render()" placeholder="Ej: 6"></div><div class="field"><span class="label">Monto por ${eM2==="E-cheque"?"cheque":"cuota"}</span><input type="text" readonly value="${(parseFloat(state._editMonto!==undefined?state._editMonto:g.monto)>0&&parseInt(state._editCantCuotas!==undefined?state._editCantCuotas:g.cantCuotas)>0)?(parseFloat(state._editMonto!==undefined?state._editMonto:g.monto)/parseInt(state._editCantCuotas!==undefined?state._editCantCuotas:g.cantCuotas)).toFixed(2):""}" style="background:var(--surface);color:var(--muted);cursor:default" placeholder="Auto"></div></div>`:"";})()}
       <div class="field"><span class="label">Nota</span><input value="${esc(eNota)}" oninput="state._editNota=this.value" placeholder="Aclaración..."></div>
       <button class="btn-primary" onclick="guardarEdicion()">Guardar cambios</button>
       <button onclick="cerrarEditarGasto()" style="width:100%;padding:10px;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:13px;cursor:pointer;margin-top:8px">Cancelar</button>
@@ -768,6 +772,7 @@ function buildCargar() {
     </div>
     <div class="field"><span class="label">Fecha</span><input type="date" value="${state.fecha}" onchange="setState({fecha:this.value})"></div>
     <div class="field"><span class="label">Medio de pago</span>${buildMedioPicker(state.medio,state.subMedio,"setMedio","setSubMedio")}</div>
+    ${esCuotasMode(state.medio)?`<div class="row2"><div class="field"><span class="label">${state.medio==="E-cheque"?"Cantidad de cheques":"Cantidad de cuotas"}</span><input type="number" min="1" step="1" value="${state.cantCuotas}" oninput="setState({cantCuotas:this.value},false)" placeholder="Ej: 6"></div><div class="field"><span class="label">Monto por ${state.medio==="E-cheque"?"cheque":"cuota"}</span><input type="text" readonly value="${(parseFloat(state.monto)>0&&parseInt(state.cantCuotas)>0)?(parseFloat(state.monto)/parseInt(state.cantCuotas)).toFixed(2):""}" style="background:var(--surface);color:var(--muted);cursor:default" placeholder="Auto"></div></div>`:""}
     <div class="field"><span class="label">Nota (opcional)</span><input value="${esc(state.nota)}" oninput="setState({nota:this.value},false)" placeholder="Aclaración..."></div>
     <button class="btn-primary" onclick="agregarGasto()">${state.splitMode?`Agregar ${state.splitParts.length} gastos divididos`:"Agregar gasto"}</button>
   </div>`;
@@ -1167,7 +1172,9 @@ function agregarGasto() {
   const desc = state.desc.trim();
   if(!desc) return showToast("⚠ Escribí una descripción");
   if(!state.monto||parseFloat(state.monto)<=0) return showToast("⚠ Ingresá un monto válido");
-  const base = {desc,titular:state.titular.trim(),monto:parseFloat(state.monto),moneda:state.moneda,fecha:state.fecha,medio:medioStr(state.medio,state.subMedio)||"No especificado",categoria:state.categoria||"Sin categoría",nota:state.nota.trim(),updatedAt:Date.now()};
+  const _cantCuotas = esCuotasMode(state.medio)&&parseInt(state.cantCuotas)>0?parseInt(state.cantCuotas):null;
+  const _montoCuota = _cantCuotas&&parseFloat(state.monto)>0?Math.round(parseFloat(state.monto)/_cantCuotas*100)/100:null;
+  const base = {desc,titular:state.titular.trim(),monto:parseFloat(state.monto),moneda:state.moneda,fecha:state.fecha,medio:medioStr(state.medio,state.subMedio)||"No especificado",categoria:state.categoria||"Sin categoría",nota:state.nota.trim(),cantCuotas:_cantCuotas,montoCuota:_montoCuota,updatedAt:Date.now()};
   if(state.splitMode) {
     if(splitSum(state.splitParts)!==100) return showToast("⚠ Los % deben sumar 100");
     if(state.splitParts.some(p=>!p.empresa)) return showToast("⚠ Asigná empresa a cada parte");
@@ -1180,7 +1187,7 @@ function agregarGasto() {
     showToast("✓ Gasto agregado");
   }
   saveAll();
-  setState({desc:"",titular:"",monto:"",fecha:hoy(),nota:"",categoria:"",medio:null,subMedio:null,empresa:null,moneda:"ARS",sugerencia:null});
+  setState({desc:"",titular:"",monto:"",fecha:hoy(),nota:"",categoria:"",medio:null,subMedio:null,empresa:null,moneda:"ARS",cantCuotas:"",sugerencia:null});
 }
 
 function eliminarGasto(id) {
@@ -1380,7 +1387,7 @@ function editarGasto(id) {
   else { console.warn("editarGasto: no se encontró id="+id, state.gastos.map(x=>x.id)); }
 }
 function clearEditState() {
-  ["_editDesc","_editTitular","_editMonto","_editMoneda","_editFecha","_editMedio","_editSubMedio","_editCat","_editNota","_editEmpresa"].forEach(k=>delete state[k]);
+  ["_editDesc","_editTitular","_editMonto","_editMoneda","_editFecha","_editMedio","_editSubMedio","_editCat","_editNota","_editEmpresa","_editCantCuotas"].forEach(k=>delete state[k]);
 }
 function cerrarEditarGasto() { clearEditState(); setState({gastoEditando:null}); }
 function setEditEmpresa(e) { state._editEmpresa=e; render(); }
@@ -1404,6 +1411,8 @@ function guardarEdicion() {
     medio: medioStr(m,sm)||g.medio||"No especificado",
     categoria: (state._editCat!==undefined?state._editCat:g.categoria)||"Sin categoría",
     nota: state._editNota!==undefined?state._editNota:(g.nota||""),
+    cantCuotas:(()=>{const mE=state._editMedio!==undefined?state._editMedio:(g.medio||"").split(" · ")[0]||null;if(!esCuotasMode(mE))return null;const c=parseInt(state._editCantCuotas!==undefined?state._editCantCuotas:g.cantCuotas);return c>0?c:null;})(),
+    montoCuota:(()=>{const mE=state._editMedio!==undefined?state._editMedio:(g.medio||"").split(" · ")[0]||null;if(!esCuotasMode(mE))return null;const c=parseInt(state._editCantCuotas!==undefined?state._editCantCuotas:g.cantCuotas);const mt=parseFloat(state._editMonto!==undefined?state._editMonto:g.monto);return(c>0&&mt>0)?Math.round(mt/c*100)/100:null;})(),
     updatedAt: Date.now(),
   };
   state.gastos = state.gastos.map(x=>x.id===g.id?updated:x);
@@ -1447,7 +1456,7 @@ function aplicarEstilosHoja(ws, rows) {
         const d = new Date(cell.value + "T00:00:00");
         if (!isNaN(d)) { cell.value = d; cell.numFmt = "dd/mm/yyyy"; }
       }
-      if (colIdx === 9 && typeof cell.value === "number") {
+      if ((colIdx === 9 || colIdx === 11) && typeof cell.value === "number") {
         cell.numFmt = fmtMonedaExcel(moneda);
         cell.alignment = { vertical:"middle", horizontal:"right" };
       }
@@ -1455,18 +1464,18 @@ function aplicarEstilosHoja(ws, rows) {
     exRow.height = 18;
   });
 
-  [12,12,24,32,20,16,16,8,14,28].forEach((w,i) => { ws.getColumn(i+1).width = w; });
+  [12,12,24,32,20,16,16,8,14,10,14,28].forEach((w,i) => { ws.getColumn(i+1).width = w; });
   ws.views = [{ state:"frozen", ySplit:1 }];
-  ws.autoFilter = { from:{row:1,column:1}, to:{row:1,column:10} };
+  ws.autoFilter = { from:{row:1,column:1}, to:{row:1,column:12} };
 }
 
 async function exportarExcel(soloEmp) {
   if(!state.gastos.length) return showToast("No hay gastos para exportar");
   const wb = new ExcelJS.Workbook();
   wb.creator = "Gastos App"; wb.created = new Date();
-  const headers = ["Fecha","Empresa","Titular/Comercio","Descripción","Categoría","Medio de pago","Subtipo","Moneda","Monto","Nota"];
+  const headers = ["Fecha","Empresa","Titular/Comercio","Descripción","Categoría","Medio de pago","Subtipo","Moneda","Monto Total","Cant. Cuotas","Monto/Cuota","Nota"];
   const splitMedio = g => { const p=(g.medio||"").split(" · "); return [p[0]||"",p[1]||""]; };
-  const toRow = g => [g.fecha, g.empresa, g.titular||"", g.desc, g.categoria||"", ...splitMedio(g), g.moneda||"ARS", g.monto, g.nota||""];
+  const toRow = g => [g.fecha, g.empresa, g.titular||"", g.desc, g.categoria||"", ...splitMedio(g), g.moneda||"ARS", g.monto, g.cantCuotas||"", g.montoCuota||"", g.nota||""];
 
   const descargar = async (nombre) => {
     const buf = await wb.xlsx.writeBuffer();
@@ -1511,8 +1520,8 @@ async function exportarBusqueda() {
   ).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha));
   if (!resultados.length) return showToast("Sin resultados para exportar");
 
-  const headers = ["Fecha","Empresa","Titular/Comercio","Descripción","Categoría","Medio de pago","Subtipo","Moneda","Monto","Nota"];
-  const rows = resultados.map(g=>[g.fecha, g.empresa, g.titular||"", g.desc, g.categoria||"", ...splitMedio(g), g.moneda||"ARS", g.monto, g.nota||""]);
+  const headers = ["Fecha","Empresa","Titular/Comercio","Descripción","Categoría","Medio de pago","Subtipo","Moneda","Monto Total","Cant. Cuotas","Monto/Cuota","Nota"];
+  const rows = resultados.map(g=>[g.fecha, g.empresa, g.titular||"", g.desc, g.categoria||"", ...splitMedio(g), g.moneda||"ARS", g.monto, g.cantCuotas||"", g.montoCuota||"", g.nota||""]);
   const wb = new ExcelJS.Workbook();
   wb.creator = "Gastos App"; wb.created = new Date();
   const nombreHoja = (state.busqueda||"busqueda").replace(/[^a-zA-Z0-9 áéíóúñÁÉÍÓÚÑ]/g,"").trim().slice(0,28) || "Busqueda";
