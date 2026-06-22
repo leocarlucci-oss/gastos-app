@@ -410,10 +410,16 @@ async function handleTokenExpired() {
     syncToDrive();
     return;
   }
+  // Refresh token inválido (puede haber expirado por modo Testing de Google)
+  // Limpiarlo para que el próximo login pida consent y obtenga uno nuevo
   state.driveToken = null;
+  state.driveRefreshToken = null;
+  state.driveTokenExpiry = 0;
   localStorage.removeItem("drive_token");
+  localStorage.removeItem("drive_token_expiry");
+  localStorage.removeItem("drive_refresh_token");
   setState({syncStatus:"expired"});
-  showToast("⚠ Sesión de Drive vencida, reconectá");
+  showToast("⚠ Sesión de Drive vencida — tocá Reconectar");
 }
 
 async function loadFromDrive() {
@@ -426,7 +432,10 @@ function driveLogin() {
   if (!DRIVE_CLIENT_ID) { showToast("⚠ Configurá el Client ID de Google"); return; }
   const scope = encodeURIComponent("https://www.googleapis.com/auth/drive.file");
   const origin = window.location.origin + window.location.pathname.replace(/\/+$/, '');
-  const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${DRIVE_CLIENT_ID}&redirect_uri=${encodeURIComponent(origin)}&response_type=code&access_type=offline&prompt=consent&scope=${scope}`;
+  // prompt=consent solo la primera vez (para obtener refresh_token)
+  // Si ya tenemos refresh_token, usamos select_account para evitar pantalla de consentimiento
+  const prompt = state.driveRefreshToken ? "select_account" : "consent";
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${DRIVE_CLIENT_ID}&redirect_uri=${encodeURIComponent(origin)}&response_type=code&access_type=offline&prompt=${prompt}&scope=${scope}`;
   window.location.href = url;
 }
 
@@ -500,11 +509,19 @@ async function refreshDriveToken() {
 }
 
 async function ensureValidToken() {
-  // Renovar si falta menos de 5 min para expirar
+  // Token válido con más de 5 min de vida → OK
   if (state.driveToken && state.driveTokenExpiry && Date.now() < state.driveTokenExpiry - 5*60*1000) {
     return true;
   }
-  return await refreshDriveToken();
+  // Intentar refresh silencioso
+  if (state.driveRefreshToken) {
+    return await refreshDriveToken();
+  }
+  // Sin refresh token y access token vencido → necesita relogin
+  if (state.driveToken) {
+    await handleTokenExpired();
+  }
+  return false;
 }
 
 function hoy() { return new Date().toISOString().split("T")[0]; }
