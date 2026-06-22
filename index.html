@@ -142,7 +142,7 @@ let state = {
   // modales
   showCats:false, plantillaEnUso:null, sugerencia:null, gastoViendo:null, listPage:1,
   // sync
-  syncStatus:"idle",
+  syncStatus:"idle", isOffline:!navigator.onLine,
   // drive
   driveToken: localStorage.getItem("drive_token") || null,
   driveTokenExpiry: parseInt(localStorage.getItem("drive_token_expiry") || "0"),
@@ -317,6 +317,11 @@ async function hacerBackupDiario(data) {
 }
 
 async function syncToDrive() {
+  if (!navigator.onLine) {
+    localStorage.setItem("pending_sync", "1");
+    setState({syncStatus:"error"}, false);
+    return;
+  }
   if (!driveEnabled()) return;
   const ok = await ensureValidToken();
   if (!ok) { handleTokenExpired(); return; }
@@ -636,7 +641,9 @@ function buildApp() {
 
 function buildHeader() {
   let driveIndicator;
-  if (!state.driveToken) {
+  if (state.isOffline) {
+    driveIndicator = `<span style="color:#6B7280;font-family:monospace;font-size:11px;display:inline-flex;align-items:center;gap:4px">⚡ Sin conexión</span>`;
+  } else if (!state.driveToken) {
     driveIndicator = `<button onclick="driveLogin()" style="background:none;border:1px solid #34D399;border-radius:6px;color:#34D399;font-size:11px;font-family:monospace;padding:3px 8px;cursor:pointer">+ Drive</button>`;
   } else if (state.syncStatus === "syncing") {
     driveIndicator = `<span style="color:#F59E0B;font-family:monospace;font-size:11px;display:inline-flex;align-items:center;gap:4px"><span style="animation:spin 1s linear infinite;display:inline-block">⟳</span> Sincronizando</span>`;
@@ -1642,8 +1649,23 @@ setInterval(() => {
 }, 2 * 60 * 1000);
 // Sync al volver a la pestaña/app (visibilitychange)
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible" && driveEnabled() && state.syncStatus !== "syncing") {
+  if (document.visibilityState === "visible" && driveEnabled() && state.syncStatus !== "syncing" && !state.isOffline) {
     loadFromDrive();
+  }
+});
+// Detectar cambios de conectividad
+window.addEventListener("offline", () => {
+  setState({isOffline: true}, false);
+  render();
+  showToast("⚡ Sin conexión — los cambios se guardan localmente");
+});
+window.addEventListener("online", () => {
+  setState({isOffline: false}, false);
+  render();
+  showToast("✓ Conexión restaurada — sincronizando...");
+  if (driveEnabled() && state.syncStatus !== "syncing") {
+    // Pequeña pausa para que la red esté realmente disponible
+    setTimeout(() => loadFromDrive(), 1500);
   }
 });
 </script>
