@@ -136,7 +136,8 @@ let state = {
   vozActiva:false, vozStatus:"",
   // lista
   filtro:"Todos",
-  busqueda:"",
+  busqueda:"", filtroBEmp:"", filtroBCat:"", filtroBMedio:"", filtroDesde:"", filtroHasta:"",
+  exportDesde:"", exportHasta:"",
   // modales
   showCats:false, plantillaEnUso:null, sugerencia:null, gastoViendo:null, listPage:1,
   // sync
@@ -943,74 +944,15 @@ function buildLista() {
 }
 
 function buildBuscar() {
-  const q = (state.busqueda||"").toLowerCase().trim();
-  const resultados = q.length < 1 ? [] : [...state.gastos].filter(g => {
-    return (g.titular||"").toLowerCase().includes(q)
-        || (g.desc||"").toLowerCase().includes(q)
-        || (g.categoria||"").toLowerCase().includes(q)
-        || (g.fecha||"").includes(q)
-        || (g.nota||"").toLowerCase().includes(q);
-  }).sort((a,b)=>new Date(b.fecha)-new Date(a.fecha));
+  const resultados = getFiltradosBusqueda();
+  const hayFiltro = resultados !== null;
+  const mediosDisp = Object.keys(MEDIOS).sort((a,b)=>a.localeCompare(b));
+  const hayActivos = !!(state.busqueda||state.filtroBEmp||state.filtroBCat||state.filtroBMedio||state.filtroDesde||state.filtroHasta);
 
-  const items = q.length < 1
-    ? `<div style="text-align:center;padding:32px;color:var(--muted);font-size:13px">Escribí algo para buscar...</div>`
+  const items = !hayFiltro
+    ? `<div style="text-align:center;padding:32px;color:var(--muted);font-size:13px">Usá los filtros para buscar gastos.</div>`
     : resultados.length === 0
-      ? `<div style="text-align:center;padding:32px;color:var(--muted);font-size:13px">Sin resultados para "<b>${esc(state.busqueda)}</b>"</div>`
-      : resultados.map(g=>`
-    <div class="gasto-item">
-      <div class="dot" style="background:${EMP[g.empresa]?.border||"#666"}"></div>
-      <div style="flex:1;min-width:0">
-        <div class="gasto-desc">${g.titular?esc(g.titular):esc(g.desc)}</div>
-        <div class="gasto-meta">${g.fecha.split("-").reverse().join("/")} · ${g.empresa} · ${g.medio||"—"}${g.titular?" · "+esc(g.desc):""}</div>
-        ${g.categoria?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(g.categoria)}</div>`:""}
-        ${g.nota?`<div class="gasto-nota">${esc(g.nota)}</div>`:""}
-      </div>
-      <div class="gasto-monto">
-        <div>${fmtMonto(g.monto,g.moneda)}</div>
-        ${g.moneda&&g.moneda!=="ARS"?`<div style="font-size:10px;color:var(--muted)">${g.moneda}</div>`:""}
-      </div>
-      <button class="btn-icon" onclick="editarGasto(${g.id})" title="Editar">✎</button>
-      <button class="btn-icon" onclick="eliminarGasto(${g.id})">✕</button>
-    </div>`).join("");
-
-  const countMsg = q.length > 0 && resultados.length > 0
-    ? `<div style="font-size:12px;color:var(--muted);margin-bottom:10px">${resultados.length} resultado${resultados.length!==1?"s":""}</div>`
-    : "";
-
-  const exportBtn = q.length > 0 && resultados.length > 0
-    ? `<button onclick="exportarBusqueda()" style="width:100%;padding:10px;background:linear-gradient(135deg,#065F46,#059669);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:12px;cursor:pointer">⬇ Exportar resultados a Excel (${resultados.length})</button>`
-    : "";
-
-  return `<div class="panel">
-    <input
-      type="text"
-      id="inp-busqueda"
-      value="${esc(state.busqueda)}"
-      oninput="onBusquedaChange(this.value)"
-      placeholder="Buscar por titular, descripción, categoría, fecha, nota..."
-      style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--fg);font-size:14px;box-sizing:border-box;margin-bottom:12px;outline:none"
-      autofocus
-    >
-    ${exportBtn}
-    <div id="busqueda-resultados">${countMsg}${items}</div>
-  </div>`;
-}
-
-function onBusquedaChange(v) {
-  state.busqueda = v;
-  const q = v.toLowerCase().trim();
-  const resultados = q.length < 1 ? [] : [...state.gastos].filter(g => {
-    return (g.titular||"").toLowerCase().includes(q)
-        || (g.desc||"").toLowerCase().includes(q)
-        || (g.categoria||"").toLowerCase().includes(q)
-        || (g.fecha||"").includes(q)
-        || (g.nota||"").toLowerCase().includes(q);
-  }).sort((a,b)=>new Date(b.fecha)-new Date(a.fecha));
-
-  const items = q.length < 1
-    ? `<div style="text-align:center;padding:32px;color:var(--muted);font-size:13px">Escribí algo para buscar...</div>`
-    : resultados.length === 0
-      ? `<div style="text-align:center;padding:32px;color:var(--muted);font-size:13px">Sin resultados para "<b>${esc(v)}</b>"</div>`
+      ? `<div style="text-align:center;padding:32px;color:var(--muted);font-size:13px">Sin resultados con los filtros aplicados.</div>`
       : resultados.map(g=>`
     <div class="gasto-item" onclick="verGasto(${g.id})" style="cursor:pointer">
       <div class="dot" style="background:${EMP[g.empresa]?.border||"#666"}"></div>
@@ -1028,29 +970,61 @@ function onBusquedaChange(v) {
       <button class="btn-icon" onclick="event.stopPropagation();eliminarGasto(${g.id})">✕</button>
     </div>`).join("");
 
-  const countMsg = q.length > 0 && resultados.length > 0
+  const countMsg = hayFiltro && resultados.length > 0
     ? `<div style="font-size:12px;color:var(--muted);margin-bottom:10px">${resultados.length} resultado${resultados.length!==1?"s":""}</div>`
     : "";
 
-  const container = document.getElementById("busqueda-resultados");
-  if (container) container.innerHTML = countMsg + items;
+  const exportBtn = hayFiltro && resultados.length > 0
+    ? `<button onclick="exportarBusqueda()" style="width:100%;padding:10px;background:linear-gradient(135deg,#065F46,#059669);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:12px;cursor:pointer">⬇ Exportar resultados a Excel (${resultados.length})</button>`
+    : "";
 
-  // Actualizar botón de exportar
-  let exportBtn = document.getElementById("btn-exportar-busqueda");
-  if (!exportBtn) {
-    exportBtn = document.createElement("button");
-    exportBtn.id = "btn-exportar-busqueda";
-    exportBtn.style.cssText = "width:100%;padding:10px;background:linear-gradient(135deg,#065F46,#059669);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:12px;cursor:pointer";
-    exportBtn.onclick = exportarBusqueda;
-    if (container) container.parentNode.insertBefore(exportBtn, container);
-  }
-  if (q.length > 0 && resultados.length > 0) {
-    exportBtn.textContent = `⬇ Exportar resultados a Excel (${resultados.length})`;
-    exportBtn.style.display = "block";
-  } else {
-    exportBtn.style.display = "none";
-  }
+  const inputStyle = "width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--fg);font-size:13px;box-sizing:border-box;outline:none";
+
+  return `<div class="panel">
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <input type="text" value="${esc(state.busqueda)}" oninput="setState({busqueda:this.value})"
+        placeholder="Texto en titular, descripción, nota..."
+        style="${inputStyle};flex:1" autofocus>
+      ${hayActivos?`<button onclick="limpiarFiltrosBusqueda()" style="padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:12px;cursor:pointer;white-space:nowrap">✕ Limpiar</button>`:""}
+    </div>
+    <div class="row2" style="margin-bottom:10px">
+      <div class="field" style="margin:0">
+        <span class="label">Empresa</span>
+        <select onchange="setState({filtroBEmp:this.value})" style="${inputStyle}">
+          <option value="">Todas</option>
+          ${EMPRESAS.map(e=>`<option${state.filtroBEmp===e?" selected":""}>${e}</option>`).join("")}
+        </select>
+      </div>
+      <div class="field" style="margin:0">
+        <span class="label">Categoría</span>
+        <select onchange="setState({filtroBCat:this.value})" style="${inputStyle}">
+          <option value="">Todas</option>
+          ${state.categorias.map(c=>`<option${state.filtroBCat===c?" selected":""}>${c}</option>`).join("")}
+        </select>
+      </div>
+    </div>
+    <div class="field" style="margin-bottom:10px">
+      <span class="label">Medio de pago</span>
+      <select onchange="setState({filtroBMedio:this.value})" style="${inputStyle}">
+        <option value="">Todos</option>
+        ${mediosDisp.map(m=>`<option${state.filtroBMedio===m?" selected":""}>${m}</option>`).join("")}
+      </select>
+    </div>
+    <div class="row2" style="margin-bottom:14px">
+      <div class="field" style="margin:0">
+        <span class="label">Fecha desde</span>
+        <input type="date" value="${state.filtroDesde}" onchange="setState({filtroDesde:this.value})" style="${inputStyle}">
+      </div>
+      <div class="field" style="margin:0">
+        <span class="label">Fecha hasta</span>
+        <input type="date" value="${state.filtroHasta}" onchange="setState({filtroHasta:this.value})" style="${inputStyle}">
+      </div>
+    </div>
+    ${exportBtn}
+    <div>${countMsg}${items}</div>
+  </div>`;
 }
+
 
 function buildResumen() {
   const MONEDAS = ["ARS","U$S","Euros","CLP"];
@@ -1077,13 +1051,33 @@ function buildResumen() {
       <div style="font-family:monospace;font-size:24px;font-weight:500;color:var(--accent)">${fmtMonto(t,mon)}</div>
     </div>` : "";
   }).filter(Boolean).join("");
+  const inputStyleR = "width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--fg);font-size:13px;box-sizing:border-box;outline:none";
+  const hayFiltroFecha = state.exportDesde||state.exportHasta;
+  const gastosFiltradosExport = hayFiltroFecha
+    ? state.gastos.filter(g=>(!state.exportDesde||g.fecha>=state.exportDesde)&&(!state.exportHasta||g.fecha<=state.exportHasta))
+    : state.gastos;
+  const labelFecha = hayFiltroFecha ? ` (${gastosFiltradosExport.length} gastos en rango)` : "";
   return `<div class="panel">
     <div class="res-grid">${cards}</div>
     <div style="margin-bottom:20px">
       ${totalesGlobal}
       <div style="font-size:12px;color:var(--muted);margin-top:4px">${state.gastos.length} gastos registrados</div>
     </div>
-    <button onclick="exportarExcel()" style="width:100%;padding:13px;background:linear-gradient(135deg,#065F46,#059669);color:white;border:none;border-radius:8px;font-size:14px;font-weight:600">⬇ Exportar a Excel</button>
+    <div style="border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:600">Filtrar export por fecha</div>
+      <div class="row2">
+        <div class="field" style="margin:0">
+          <span class="label">Desde</span>
+          <input type="date" value="${state.exportDesde}" onchange="setState({exportDesde:this.value})" style="${inputStyleR}">
+        </div>
+        <div class="field" style="margin:0">
+          <span class="label">Hasta</span>
+          <input type="date" value="${state.exportHasta}" onchange="setState({exportHasta:this.value})" style="${inputStyleR}">
+        </div>
+      </div>
+      ${hayFiltroFecha?`<button onclick="setState({exportDesde:'',exportHasta:''})" style="margin-top:8px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:12px;cursor:pointer">✕ Quitar filtro de fecha</button>`:""}
+    </div>
+    <button onclick="exportarExcel()" style="width:100%;padding:13px;background:linear-gradient(135deg,#065F46,#059669);color:white;border:none;border-radius:8px;font-size:14px;font-weight:600">⬇ Exportar a Excel${labelFecha}</button>
   </div>`;
 }
 
@@ -1166,6 +1160,30 @@ function attachEvents() {
 // ── Acciones ───────────────────────────────────────────────────
 function setTab(t) { setState({tab:t}); }
 function setFiltro(f) { setState({filtro:f, listPage:1}); }
+
+function getFiltradosBusqueda() {
+  const q = (state.busqueda||"").toLowerCase().trim();
+  const emp = state.filtroBEmp||"";
+  const cat = state.filtroBCat||"";
+  const med = state.filtroBMedio||"";
+  const desde = state.filtroDesde||"";
+  const hasta = state.filtroHasta||"";
+  const hayFiltro = q||emp||cat||med||desde||hasta;
+  if(!hayFiltro) return null;
+  return [...state.gastos].filter(g=>{
+    if(q && !((g.titular||"").toLowerCase().includes(q)||(g.desc||"").toLowerCase().includes(q)||(g.nota||"").toLowerCase().includes(q))) return false;
+    if(emp && g.empresa!==emp) return false;
+    if(cat && (g.categoria||"")!==cat) return false;
+    if(med && !(g.medio||"").startsWith(med)) return false;
+    if(desde && g.fecha<desde) return false;
+    if(hasta && g.fecha>hasta) return false;
+    return true;
+  }).sort((a,b)=>new Date(b.fecha)-new Date(a.fecha));
+}
+
+function limpiarFiltrosBusqueda() {
+  setState({busqueda:"",filtroBEmp:"",filtroBCat:"",filtroBMedio:"",filtroDesde:"",filtroHasta:""});
+}
 function cargarMasGastos() { setState({listPage: state.listPage + 1}); }
 function setEmpresa(e) { setState({empresa:e}); }
 function setEmpIA(e) { setState({empIA:e}); }
@@ -1542,54 +1560,51 @@ async function exportarExcel(soloEmp) {
     a.download = nombre; a.click();
   };
 
+  const fechaFiltro = g => (!state.exportDesde||g.fecha>=state.exportDesde)&&(!state.exportHasta||g.fecha<=state.exportHasta);
+  const sufFecha = (state.exportDesde||state.exportHasta) ? `_${state.exportDesde||"inicio"}_${state.exportHasta||"hoy"}` : "";
+
   if (soloEmp) {
-    const rows = state.gastos.filter(g=>g.empresa===soloEmp).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(toRow);
-    if (!rows.length) return showToast(`Sin gastos para ${soloEmp}`);
+    const rows = state.gastos.filter(g=>g.empresa===soloEmp&&fechaFiltro(g)).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(toRow);
+    if (!rows.length) return showToast(`Sin gastos para ${soloEmp}${sufFecha?" en ese período":""}`);
     const ws = wb.addWorksheet(soloEmp);
     ws.addRow(headers); rows.forEach(r=>ws.addRow(r));
     aplicarEstilosHoja(ws, rows);
-    await descargar(`gastos_${soloEmp}_${hoy()}.xlsx`);
-    showToast(`✓ Excel ${soloEmp} exportado`);
+    await descargar(`gastos_${soloEmp}${sufFecha}_${hoy()}.xlsx`);
+    showToast(`✓ Excel ${soloEmp} exportado (${rows.length} gastos)`);
     return;
   }
 
   EMPRESAS.forEach(emp => {
-    const rows = state.gastos.filter(g=>g.empresa===emp).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(toRow);
+    const rows = state.gastos.filter(g=>g.empresa===emp&&fechaFiltro(g)).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(toRow);
     const ws = wb.addWorksheet(emp);
     ws.addRow(headers); rows.forEach(r=>ws.addRow(r));
     aplicarEstilosHoja(ws, rows);
   });
-  const allRows = [...state.gastos].sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(toRow);
+  const allRows = [...state.gastos].filter(fechaFiltro).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(toRow);
   const wsAll = wb.addWorksheet("Todos");
   wsAll.addRow(headers); allRows.forEach(r=>wsAll.addRow(r));
   aplicarEstilosHoja(wsAll, allRows);
-  await descargar(`gastos_${hoy()}.xlsx`);
-  showToast("✓ Excel exportado");
+  await descargar(`gastos${sufFecha}_${hoy()}.xlsx`);
+  showToast(`✓ Excel exportado (${allRows.length} gastos)`);
 }
 
 async function exportarBusqueda() {
-  const q = (state.busqueda||"").toLowerCase().trim();
-  if (!q) return showToast("No hay búsqueda activa");
+  const resultados = getFiltradosBusqueda();
+  if(!resultados||!resultados.length) return showToast("Sin resultados para exportar");
   const splitMedio = g => { const p=(g.medio||"").split(" · "); return [p[0]||"",p[1]||""]; };
-  const resultados = [...state.gastos].filter(g =>
-    (g.titular||"").toLowerCase().includes(q) || (g.desc||"").toLowerCase().includes(q)
-    || (g.categoria||"").toLowerCase().includes(q) || (g.fecha||"").includes(q)
-    || (g.nota||"").toLowerCase().includes(q)
-  ).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha));
-  if (!resultados.length) return showToast("Sin resultados para exportar");
-
+  const sorted = [...resultados].sort((a,b)=>new Date(a.fecha)-new Date(b.fecha));
   const headers = ["Fecha","Empresa","Titular/Comercio","Descripción","Categoría","Medio de pago","Subtipo","Moneda","Monto Total","Cant. Cuotas","Monto/Cuota","Nota"];
-  const rows = resultados.map(g=>[g.fecha, g.empresa, g.titular||"", g.desc, g.categoria||"", ...splitMedio(g), g.moneda||"ARS", g.monto, g.cantCuotas||"", g.montoCuota||"", g.nota||""]);
+  const rows = sorted.map(g=>[g.fecha, g.empresa, g.titular||"", g.desc, g.categoria||"", ...splitMedio(g), g.moneda||"ARS", g.monto, g.cantCuotas||"", g.montoCuota||"", g.nota||""]);
   const wb = new ExcelJS.Workbook();
   wb.creator = "Gastos App"; wb.created = new Date();
-  const nombreHoja = (state.busqueda||"busqueda").replace(/[^a-zA-Z0-9 áéíóúñÁÉÍÓÚÑ]/g,"").trim().slice(0,28) || "Busqueda";
-  const ws = wb.addWorksheet(nombreHoja);
+  const labelHoja = (state.busqueda||state.filtroBEmp||state.filtroBCat||"busqueda").replace(/[^a-zA-Z0-9 áéíóúñÁÉÍÓÚÑ]/g,"").trim().slice(0,28) || "Busqueda";
+  const ws = wb.addWorksheet(labelHoja);
   ws.addRow(headers); rows.forEach(r=>ws.addRow(r));
   aplicarEstilosHoja(ws, rows);
   const buf = await wb.xlsx.writeBuffer();
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([buf], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
-  a.download = `busqueda_${(state.busqueda||"").replace(/\s+/g,"_").slice(0,30)}_${hoy()}.xlsx`;
+  a.download = `busqueda_${labelHoja.replace(/\s+/g,"_")}_${hoy()}.xlsx`;
   a.click();
   showToast(`✓ Excel exportado (${resultados.length} gastos)`);
 }
