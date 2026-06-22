@@ -630,7 +630,7 @@ function buildHeader() {
   } else {
     driveIndicator = `<button onclick="driveLogout()" style="background:none;border:1px solid #34D399;border-radius:6px;color:#34D399;font-size:11px;font-family:monospace;padding:3px 8px;cursor:pointer" title="Conectado - Tocar para desconectar">✓ Drive</button>`;
   }
-  const badges = EMPRESAS.map(e=>`<span style="font-family:monospace;font-size:11px;padding:3px 10px;border-radius:4px;font-weight:500;background:${EMP[e].bg};color:${EMP[e].text};border:1px solid ${EMP[e].border}44">${e}</span>`).join("");
+  const badges = EMPRESAS.map(e=>`<span onclick="setFiltro('${e}');setTab('lista')" style="font-family:monospace;font-size:11px;padding:3px 10px;border-radius:4px;font-weight:500;background:${EMP[e].bg};color:${EMP[e].text};border:1px solid ${EMP[e].border}44;cursor:pointer">${e}</span>`).join("");
   return `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
       <div style="font-family:monospace;font-size:15px;font-weight:500;letter-spacing:-.5px">// GESTOR DE GASTOS</div>
