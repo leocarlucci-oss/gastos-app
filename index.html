@@ -1021,10 +1021,10 @@ function buildBuscar() {
 
   return `<div class="panel">
     <div style="display:flex;gap:8px;margin-bottom:10px">
-      <input type="text" value="${esc(state.busqueda)}" oninput="setState({busqueda:this.value})"
+      <input type="text" value="${esc(state.busqueda)}" oninput="busquedaInput(this.value)"
         placeholder="Texto en titular, descripción, nota..."
         style="${inputStyle};flex:1" autofocus>
-      ${hayActivos?`<button onclick="limpiarFiltrosBusqueda()" style="padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:12px;cursor:pointer;white-space:nowrap">✕ Limpiar</button>`:""}
+      <span id="buscar-limpiar-wrap">${hayActivos?`<button onclick="limpiarFiltrosBusqueda()" style="padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:12px;cursor:pointer;white-space:nowrap">✕ Limpiar</button>`:""}</span>
     </div>
     <div class="row2" style="margin-bottom:10px">
       <div class="field" style="margin:0">
@@ -1059,8 +1059,7 @@ function buildBuscar() {
         <input type="date" value="${state.filtroHasta}" onchange="setState({filtroHasta:this.value})" style="${inputStyle}">
       </div>
     </div>
-    ${exportBtn}
-    <div>${countMsg}${items}</div>
+    <div id="buscar-results">${exportBtn}${countMsg}${items}</div>
   </div>`;
 }
 
@@ -1277,6 +1276,47 @@ function initCatDrag() {
 function setTab(t) { setState({tab:t}); }
 function setFiltro(f) { setState({filtro:f, listPage:1}); }
 
+function buildBuscarResultsHTML() {
+  const resultados = getFiltradosBusqueda();
+  const hayFiltro = resultados !== null;
+  const items = !hayFiltro
+    ? `<div style="text-align:center;padding:32px;color:var(--muted);font-size:13px">Usá los filtros para buscar gastos.</div>`
+    : resultados.length === 0
+      ? `<div style="text-align:center;padding:32px;color:var(--muted);font-size:13px">Sin resultados con los filtros aplicados.</div>`
+      : resultados.map(g=>`
+    <div class="gasto-item" onclick="verGasto(${g.id})" style="cursor:pointer">
+      <div class="dot" style="background:${EMP[g.empresa]?.border||"#666"}"></div>
+      <div style="flex:1;min-width:0">
+        <div class="gasto-desc">${g.titular?esc(g.titular):esc(g.desc)}</div>
+        <div class="gasto-meta">${g.fecha.split("-").reverse().join("/")} · ${g.empresa} · ${g.medio||"—"}${g.titular?" · "+esc(g.desc):""}</div>
+        ${g.categoria?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(g.categoria)}</div>`:""}
+        ${g.nota?`<div class="gasto-nota">${esc(g.nota)}</div>`:""}
+      </div>
+      <div class="gasto-monto">
+        <div>${fmtMonto(g.monto,g.moneda)}</div>
+        ${g.moneda&&g.moneda!=="ARS"?`<div style="font-size:10px;color:var(--muted)">${g.moneda}</div>`:""}
+      </div>
+      <button class="btn-icon" onclick="event.stopPropagation();editarGasto(${g.id})" title="Editar">✎</button>
+      <button class="btn-icon" onclick="event.stopPropagation();eliminarGasto(${g.id})">✕</button>
+    </div>`).join("");
+  const countMsg = hayFiltro && resultados.length > 0
+    ? `<div style="font-size:12px;color:var(--muted);margin-bottom:10px">${resultados.length} resultado${resultados.length!==1?"s":""}</div>`
+    : "";
+  const exportBtn = hayFiltro && resultados.length > 0
+    ? `<button onclick="exportarBusqueda()" style="width:100%;padding:10px;background:linear-gradient(135deg,#065F46,#059669);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:12px;cursor:pointer">⬇ Exportar resultados a Excel (${resultados.length})</button>`
+    : "";
+  return exportBtn + countMsg + items;
+}
+function busquedaInput(val) {
+  state.busqueda = val;
+  const hayActivos = !!(state.busqueda||state.filtroBEmp||state.filtroBCat||state.filtroBMedio||state.filtroDesde||state.filtroHasta);
+  const limpiarEl = document.getElementById("buscar-limpiar-wrap");
+  if (limpiarEl) limpiarEl.innerHTML = hayActivos
+    ? '<button onclick="limpiarFiltrosBusqueda()" style="padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:12px;cursor:pointer;white-space:nowrap">✕ Limpiar</button>'
+    : '';
+  const el = document.getElementById("buscar-results");
+  if (el) el.innerHTML = buildBuscarResultsHTML();
+}
 function getFiltradosBusqueda() {
   const q = (state.busqueda||"").toLowerCase().trim();
   const emp = state.filtroBEmp||"";
