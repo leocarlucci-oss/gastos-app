@@ -357,7 +357,7 @@ async function syncToDrive() {
 
       const driveCats = (driveData.categorias || []).filter(c => !allDeletedCats.includes(c));
       const localCats = state.categorias.filter(c => !allDeletedCats.includes(c));
-      const mergedCats = [...new Set([...localCats, ...driveCats])];
+      const mergedCats = [...new Set([...driveCats, ...localCats])];
       state.categorias = mergedCats;
       localStorage.setItem("cats_v5", JSON.stringify(state.categorias));
     }
