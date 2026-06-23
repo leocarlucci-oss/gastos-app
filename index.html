@@ -1109,7 +1109,8 @@ function buildResumen() {
 
 function buildModalCats() {
   const items = state.categorias.map((c,i)=>`
-    <div class="cat-item">
+    <div class="cat-item" draggable="true">
+      <span class="cat-drag-handle" style="color:var(--muted);font-size:18px;padding:0 10px 0 0;cursor:grab;touch-action:none;user-select:none">⠿</span>
       <span style="flex:1;font-size:13px">${esc(c)}</span>
       <button onclick="editCat(${i})" style="background:none;border:none;color:var(--muted);font-size:14px">✎</button>
       <button onclick="delCat(${i})" style="background:none;border:none;color:var(--muted);font-size:14px">🗑</button>
@@ -1181,6 +1182,79 @@ function attachEvents() {
   // file input
   const fi = document.getElementById("fileInput");
   if (fi) fi.onchange = function(){ handleFile(this); };
+  // cat drag & drop
+  if (state.showCats) initCatDrag();
+}
+
+function initCatDrag() {
+  const items = [...document.querySelectorAll(".cat-item")];
+  if (!items.length) return;
+  let dragIdx = null;
+
+  items.forEach((item, i) => {
+    const handle = item.querySelector(".cat-drag-handle");
+
+    // Desktop HTML5 drag
+    item.addEventListener("dragstart", e => {
+      dragIdx = i;
+      e.dataTransfer.effectAllowed = "move";
+      setTimeout(() => item.style.opacity = "0.5", 0);
+    });
+    item.addEventListener("dragover", e => {
+      e.preventDefault();
+      items.forEach((el, j) => el.style.borderTop = (j === i && i !== dragIdx) ? "2px solid var(--accent)" : "");
+    });
+    item.addEventListener("dragleave", () => { item.style.borderTop = ""; });
+    item.addEventListener("dragend", () => {
+      items.forEach(el => { el.style.borderTop = ""; el.style.opacity = ""; });
+      dragIdx = null;
+    });
+    item.addEventListener("drop", e => {
+      e.preventDefault();
+      items.forEach(el => { el.style.borderTop = ""; el.style.opacity = ""; });
+      if (dragIdx !== null && dragIdx !== i) {
+        const cats = [...state.categorias];
+        const [m] = cats.splice(dragIdx, 1);
+        cats.splice(i, 0, m);
+        state.categorias = cats;
+        saveAll(); render();
+      }
+      dragIdx = null;
+    });
+
+    // Mobile touch drag
+    if (!handle) return;
+    handle.addEventListener("touchstart", e => {
+      dragIdx = i;
+      item.style.opacity = "0.6";
+      item.style.background = "rgba(245,158,11,0.08)";
+    }, {passive: true});
+    handle.addEventListener("touchmove", e => {
+      e.preventDefault();
+      const t = e.touches[0];
+      const target = document.elementFromPoint(t.clientX, t.clientY)?.closest(".cat-item");
+      items.forEach(el => el.style.borderTop = "");
+      if (target && target !== item) target.style.borderTop = "2px solid var(--accent)";
+    }, {passive: false});
+    handle.addEventListener("touchend", e => {
+      const t = e.changedTouches[0];
+      const target = document.elementFromPoint(t.clientX, t.clientY)?.closest(".cat-item");
+      item.style.opacity = "";
+      item.style.background = "";
+      items.forEach(el => el.style.borderTop = "");
+      if (target && target !== item) {
+        const targetIdx = items.indexOf(target);
+        if (targetIdx !== -1 && dragIdx !== null) {
+          const cats = [...state.categorias];
+          const [m] = cats.splice(dragIdx, 1);
+          cats.splice(targetIdx, 0, m);
+          state.categorias = cats;
+          saveAll(); render();
+        }
+      }
+      dragIdx = null;
+    }, {passive: true});
+  });
 }
 
 // ── Acciones ───────────────────────────────────────────────────
