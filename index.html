@@ -1225,10 +1225,11 @@ function initCatDrag() {
     // Mobile touch drag
     if (!handle) return;
     handle.addEventListener("touchstart", e => {
+      e.preventDefault();
       dragIdx = i;
       item.style.opacity = "0.6";
       item.style.background = "rgba(245,158,11,0.08)";
-    }, {passive: true});
+    }, {passive: false});
     handle.addEventListener("touchmove", e => {
       e.preventDefault();
       const t = e.touches[0];
@@ -1434,16 +1435,29 @@ function confirmarPlantilla() {
 function addCat() { const v=document.getElementById("nueva-cat").value.trim(); if(!v||state.categorias.includes(v))return; state.categorias=[...state.categorias,v]; saveAll(); render(); }
 function delCat(i) {
   const removed = state.categorias[i];
+  if (!removed) return;
+  const enUso = state.gastos.filter(g => g.categoria === removed).length;
+  const msg = enUso > 0
+    ? `"${removed}" está en ${enUso} gasto${enUso>1?'s':''}. ¿Eliminar la categoría de todos modos?`
+    : `¿Eliminar la categoría "${removed}"?`;
+  if (!confirm(msg)) return;
   state.categorias = state.categorias.filter((_,j)=>j!==i);
-  if (removed) {
-    state.deletedCategorias = [...new Set([...state.deletedCategorias, removed])];
-    localStorage.setItem("deleted_cats_v1", JSON.stringify(state.deletedCategorias));
-  }
+  state.deletedCategorias = [...new Set([...state.deletedCategorias, removed])];
+  localStorage.setItem("deleted_cats_v1", JSON.stringify(state.deletedCategorias));
   saveAll(); render();
 }
 function editCat(i) {
-  const v = prompt("Renombrar categoría:", state.categorias[i]);
-  if(v&&v.trim()) { state.categorias=state.categorias.map((c,j)=>j===i?v.trim():c); saveAll(); render(); }
+  const oldName = state.categorias[i];
+  const v = prompt("Renombrar categoría:", oldName);
+  if (!v || !v.trim() || v.trim() === oldName) return;
+  const newName = v.trim();
+  const enUso = state.gastos.filter(g => g.categoria === oldName).length;
+  if (enUso > 0) {
+    if (!confirm(`"${oldName}" está en ${enUso} gasto${enUso>1?'s':''}. Se actualizarán todos. ¿Continuar?`)) return;
+    state.gastos = state.gastos.map(g => g.categoria === oldName ? {...g, categoria: newName, updatedAt: Date.now()} : g);
+  }
+  state.categorias = state.categorias.map((c,j) => j===i ? newName : c);
+  saveAll(); render();
 }
 
 // Archivo
