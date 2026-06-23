@@ -1409,7 +1409,7 @@ async function procesarIA() {
     const titularesHint = titularesConocidos.length > 0
       ? ` Para el campo titular: si el comercio/proveedor que encontrás coincide o es muy similar a alguno de esta lista, usá exactamente ese nombre: [${titularesConocidos.join(", ")}]. Si no coincide con ninguno, usá el nombre tal como aparece.`
       : "";
-    const prompt = (state.textoLibre?`Texto: "${state.textoLibre}". `:"") + `Extraé: titular (nombre del comercio/proveedor), desc (concepto del gasto), monto (número), moneda (ARS/U$S/Euros/CLP), fecha (YYYY-MM-DD o null), medio (Tx/TC ARS/TC U$S/TC EUR/Cash/MP/PayPal/Bizum/Zelle), subMedio (o null), categoria (una de: ${state.categorias.join("/")}).${titularesHint} Solo JSON sin backticks.`;
+    const prompt = `Hoy es ${hoy()}. ` + (state.textoLibre?`Texto: "${state.textoLibre}". `:"") + `Extraé: titular (nombre del comercio/proveedor), desc (concepto del gasto), monto (número), moneda (ARS/U$S/Euros/CLP), fecha (YYYY-MM-DD o null, si no tiene año usá el año de hoy), medio (Tx/TC ARS/TC U$S/TC EUR/Cash/MP/PayPal/Bizum/Zelle), subMedio (o null), categoria (una de: ${state.categorias.join("/")}).${titularesHint} Solo JSON sin backticks.`;
     let messages;
     if(state.imgB64) {
       messages=[{role:"user",content:[{type:"image",source:{type:"base64",media_type:state.imgMime||"image/jpeg",data:state.imgB64}},{type:"text",text:prompt}]}];
