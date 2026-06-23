@@ -781,7 +781,14 @@ function buildModalEditarGasto() {
       <div class="field"><span class="label">Empresa</span>${buildEmpGrid(eEmp,"setEditEmpresa")}</div>
       <div class="field"><span class="label">Titular / Comercio</span><div class="ac-wrap"><input value="${esc(eTitular)}" oninput="state._editTitular=this.value;acTitular(this,'ac-modal')" onfocus="this.select();acTitular(this,'ac-modal')" onblur="setTimeout(()=>acCerrar('ac-modal'),200)" placeholder="Ej: YPF, Mercado Libre..." autocomplete="off"><div id="ac-modal" class="ac-dropdown" style="display:none"></div></div></div>
       <div class="field"><span class="label">Descripción</span><input value="${esc(eDesc)}" oninput="state._editDesc=this.value"></div>
-      <div class="field"><span class="label">Categoría</span><select onchange="state._editCat=this.value"><option value="">Seleccioná...</option>${catOpts}</select></div>
+      <div class="field"><span class="label">Categoría</span>
+        <div style="display:flex;gap:6px;align-items:center">
+          <select style="flex:1" onchange="state._editCat=this.value"><option value="">Seleccioná...</option>${catOpts}</select>
+          <button onclick="editModalAddCat()" title="Nueva categoría" style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:15px;padding:4px 8px;cursor:pointer;white-space:nowrap">+</button>
+          <button onclick="editModalRenameCat()" title="Renombrar" style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:13px;padding:4px 8px;cursor:pointer;${eCat?'':'opacity:0.3;pointer-events:none'}">✎</button>
+          <button onclick="editModalDeleteCat()" title="Eliminar" style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:13px;padding:4px 8px;cursor:pointer;${eCat?'':'opacity:0.3;pointer-events:none'}">🗑</button>
+        </div>
+      </div>
       <div class="row2">
         <div class="field"><span class="label">Monto</span><input type="number" value="${eMonto}" oninput="state._editMonto=this.value" step="0.01"></div>
         <div class="field"><span class="label">Moneda</span><select onchange="state._editMoneda=this.value">${monOpts}</select></div>
@@ -1452,6 +1459,47 @@ function delCat(i) {
   state.categorias = state.categorias.filter((_,j)=>j!==i);
   state.deletedCategorias = [...new Set([...state.deletedCategorias, removed])];
   localStorage.setItem("deleted_cats_v1", JSON.stringify(state.deletedCategorias));
+  saveAll(); render();
+}
+function editModalAddCat() {
+  const v = prompt("Nueva categoría:");
+  if (!v || !v.trim()) return;
+  const name = v.trim();
+  if (state.categorias.includes(name)) { alert("Ya existe esa categoría."); return; }
+  state.categorias = [...state.categorias, name];
+  state._editCat = name;
+  localStorage.setItem("cats_reordered_at", Date.now().toString());
+  saveAll(); render();
+}
+function editModalRenameCat() {
+  const current = state._editCat !== undefined ? state._editCat : (state.gastoEditando ? state.gastoEditando.categoria : "");
+  if (!current) { alert("Seleccioná una categoría primero."); return; }
+  const v = prompt("Renombrar categoría:", current);
+  if (!v || !v.trim() || v.trim() === current) return;
+  const newName = v.trim();
+  const enUso = state.gastos.filter(g => g.categoria === current).length;
+  if (enUso > 0) {
+    if (!confirm(`"${current}" está en ${enUso} gasto${enUso>1?"s":""}. Se actualizarán todos. ¿Continuar?`)) return;
+    state.gastos = state.gastos.map(g => g.categoria === current ? {...g, categoria: newName, updatedAt: Date.now()} : g);
+  }
+  state.categorias = state.categorias.map(c => c === current ? newName : c);
+  state._editCat = newName;
+  saveAll(); render();
+}
+function editModalDeleteCat() {
+  const current = state._editCat !== undefined ? state._editCat : (state.gastoEditando ? state.gastoEditando.categoria : "");
+  if (!current) { alert("Seleccioná una categoría primero."); return; }
+  const idx = state.categorias.indexOf(current);
+  if (idx === -1) return;
+  const enUso = state.gastos.filter(g => g.categoria === current).length;
+  const msg = enUso > 0
+    ? `"${current}" está en ${enUso} gasto${enUso>1?"s":""}. ¿Eliminar la categoría de todos modos?`
+    : `¿Eliminar la categoría "${current}"?`;
+  if (!confirm(msg)) return;
+  state.categorias = state.categorias.filter((_,j) => j !== idx);
+  state.deletedCategorias = [...new Set([...state.deletedCategorias, current])];
+  localStorage.setItem("deleted_cats_v1", JSON.stringify(state.deletedCategorias));
+  state._editCat = "";
   saveAll(); render();
 }
 function editCat(i) {
