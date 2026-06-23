@@ -357,7 +357,13 @@ async function syncToDrive() {
 
       const driveCats = (driveData.categorias || []).filter(c => !allDeletedCats.includes(c));
       const localCats = state.categorias.filter(c => !allDeletedCats.includes(c));
-      const mergedCats = [...new Set([...driveCats, ...localCats])];
+      // Si el usuario reordenó localmente después del último sync de Drive, respetar orden local
+      const driveLastSync = driveData.lastSync ? new Date(driveData.lastSync).getTime() : 0;
+      const localReorderedAt = parseInt(localStorage.getItem("cats_reordered_at") || "0");
+      const localIsNewer = localReorderedAt > driveLastSync;
+      const mergedCats = localIsNewer
+        ? [...new Set([...localCats, ...driveCats])]   // local gana (reorden manual reciente)
+        : [...new Set([...driveCats, ...localCats])];  // drive gana (sync desde otro dispositivo)
       state.categorias = mergedCats;
       localStorage.setItem("cats_v5", JSON.stringify(state.categorias));
     }
@@ -1217,6 +1223,7 @@ function initCatDrag() {
         const [m] = cats.splice(dragIdx, 1);
         cats.splice(i, 0, m);
         state.categorias = cats;
+        localStorage.setItem("cats_reordered_at", Date.now().toString());
         saveAll(); render();
       }
       dragIdx = null;
@@ -1250,6 +1257,7 @@ function initCatDrag() {
           const [m] = cats.splice(dragIdx, 1);
           cats.splice(targetIdx, 0, m);
           state.categorias = cats;
+          localStorage.setItem("cats_reordered_at", Date.now().toString());
           saveAll(); render();
         }
       }
