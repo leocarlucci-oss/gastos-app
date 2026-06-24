@@ -1567,21 +1567,36 @@ function handleFile(input) {
 
 // Voz
 let recognition = null;
+let _micStream = null;
+let _silenceTimer = null;
+function _liberarMic() {
+  if(_micStream) { _micStream.getTracks().forEach(t=>t.stop()); _micStream=null; }
+  if(_silenceTimer) { clearTimeout(_silenceTimer); _silenceTimer=null; }
+}
 function iniciarVoz() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if(!SR) { showToast("⚠ Usá el dictado del teclado"); return; }
-  recognition = new SR();
-  recognition.lang="es-AR"; recognition.continuous=false; recognition.interimResults=true;
-  recognition.onstart = ()=>setState({vozActiva:true,vozStatus:"escuchando"});
-  recognition.onresult = e=>{
-    const t=Array.from(e.results).map(r=>r[0].transcript).join("");
-    state.textoLibre=t; state.vozStatus=e.results[e.results.length-1].isFinal?"listo":"escuchando"; render();
-  };
-  recognition.onerror = e=>{setState({vozActiva:false,vozStatus:"error"}); showToast("Error mic: "+e.error);};
-  recognition.onend = ()=>setState({vozActiva:false});
-  recognition.start();
+  navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
+    _micStream = stream;
+    recognition = new SR();
+    recognition.lang="es-AR"; recognition.continuous=true; recognition.interimResults=true;
+    recognition.onstart = ()=>setState({vozActiva:true,vozStatus:"escuchando"});
+    recognition.onresult = e=>{
+      const t=Array.from(e.results).map(r=>r[0].transcript).join("");
+      state.textoLibre=t;
+      state.vozStatus="escuchando"; render();
+      // Reiniciar timer de silencio: 4 segundos sin resultado final = detener
+      if(_silenceTimer) clearTimeout(_silenceTimer);
+      if(e.results[e.results.length-1].isFinal) {
+        _silenceTimer = setTimeout(()=>detenerVoz(), 4000);
+      }
+    };
+    recognition.onerror = e=>{ _liberarMic(); setState({vozActiva:false,vozStatus:"error"}); showToast("Error mic: "+e.error); };
+    recognition.onend = ()=>{ _liberarMic(); setState({vozActiva:false,vozStatus:"listo"}); };
+    recognition.start();
+  }).catch(err=>{ showToast("Sin acceso al micrófono: "+err.message); });
 }
-function detenerVoz() { if(recognition) recognition.stop(); setState({vozActiva:false}); }
+function detenerVoz() { if(recognition) recognition.stop(); _liberarMic(); setState({vozActiva:false}); }
 
 // IA
 async function procesarIA() {
