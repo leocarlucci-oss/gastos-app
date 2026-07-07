@@ -801,6 +801,7 @@ function buildModalEditarGasto() {
         <div class="field"><span class="label">Monto</span><input type="number" value="${eMonto}" oninput="state._editMonto=this.value" step="0.01"></div>
         <div class="field"><span class="label">Moneda</span><select onchange="state._editMoneda=this.value">${monOpts}</select></div>
       </div>
+      ${g.splitGroupId ? buildSplitLinkedInfo(g) : ""}
       <div class="field"><span class="label">Fecha</span><input type="date" value="${eFecha}" onchange="state._editFecha=this.value"></div>
       <div class="field"><span class="label">Medio de pago</span>${buildMedioPicker(m,sm,"setEditMedio","setEditSubMedio")}</div>
       ${(()=>{const eM2=m||"";const tcCuotasEdit=state._editTcCuotas!==undefined?state._editTcCuotas:!!(g.cantCuotas&&esTCMedio(eM2));const tcToggle=esTCMedio(eM2)?`<div class="field"><span class="label">Modalidad</span><div style="display:flex;gap:8px">${["Pago único","En cuotas"].map(op=>`<button onclick="state._editTcCuotas=${op==='En cuotas'};state._editCantCuotas=undefined;render()" style="flex:1;padding:8px;border-radius:8px;border:1px solid ${(op==='En cuotas')===tcCuotasEdit?'var(--accent)':'var(--border)'};background:${(op==='En cuotas')===tcCuotasEdit?'rgba(245,158,11,.12)':'var(--surface)'};color:${(op==='En cuotas')===tcCuotasEdit?'var(--accent)':'var(--muted)'};font-size:13px;cursor:pointer">${op}</button>`).join('')}</div></div>`:"";const showCuotas=esCuotasMode(eM2,tcCuotasEdit);const cuotasField=showCuotas?`<div class="row2"><div class="field"><span class="label">${eM2==="E-cheque"?"Cantidad de cheques":"Cantidad de cuotas"}</span><input type="number" min="1" step="1" value="${state._editCantCuotas!==undefined?state._editCantCuotas:(g.cantCuotas||"")}" oninput="state._editCantCuotas=this.value;render()" placeholder="Ej: 6"></div><div class="field"><span class="label">Monto por ${eM2==="E-cheque"?"cheque":"cuota"}</span><input type="text" readonly value="${(parseFloat(state._editMonto!==undefined?state._editMonto:g.monto)>0&&parseInt(state._editCantCuotas!==undefined?state._editCantCuotas:g.cantCuotas)>0)?(parseFloat(state._editMonto!==undefined?state._editMonto:g.monto)/parseInt(state._editCantCuotas!==undefined?state._editCantCuotas:g.cantCuotas)).toFixed(2):""}" style="background:var(--surface);color:var(--muted);cursor:default" placeholder="Auto"></div></div>`:"";return tcToggle+cuotasField;})()}
@@ -1393,7 +1394,8 @@ function agregarGasto() {
   if(state.splitMode) {
     if(splitSum(state.splitParts)!==100) return showToast("⚠ Los % deben sumar 100");
     if(state.splitParts.some(p=>!p.empresa)) return showToast("⚠ Asigná empresa a cada parte");
-    const nuevos = state.splitParts.map((p,i)=>({...base,id:Date.now()+i,empresa:p.empresa,monto:Math.round(base.monto*p.pct/100*100)/100,nota:`${base.nota?base.nota+" · ":""}División ${p.pct}%`}));
+    const groupId = Date.now();
+    const nuevos = state.splitParts.map((p,i)=>({...base,id:groupId+i,empresa:p.empresa,monto:Math.round(base.monto*p.pct/100*100)/100,nota:`${base.nota?base.nota+" · ":""}División ${p.pct}%`,splitGroupId:groupId,splitPct:p.pct}));
     state.gastos = [...state.gastos,...nuevos];
     showToast(`✓ ${nuevos.length} gastos agregados`);
   } else {
@@ -1655,7 +1657,8 @@ function confirmarIA() {
   if(state.iaSplitMode) {
     if(splitSum(state.iaSplitParts)!==100) return showToast("⚠ Los % deben sumar 100");
     if(state.iaSplitParts.some(p=>!p.empresa)) return showToast("⚠ Asigná empresa a cada parte");
-    const nuevos = state.iaSplitParts.map((p,i)=>({...base,id:Date.now()+i,empresa:p.empresa,monto:Math.round(base.monto*p.pct/100*100)/100}));
+    const groupId = Date.now();
+    const nuevos = state.iaSplitParts.map((p,i)=>({...base,id:groupId+i,empresa:p.empresa,monto:Math.round(base.monto*p.pct/100*100)/100,splitGroupId:groupId,splitPct:p.pct}));
     state.gastos=[...state.gastos,...nuevos];
     showToast(`✓ ${nuevos.length} gastos agregados`);
   } else {
@@ -1692,6 +1695,36 @@ function cerrarEditarGasto() { clearEditState(); setState({gastoEditando:null});
 function setEditEmpresa(e) { state._editEmpresa=e; render(); }
 function setEditMedio(m) { state._editMedio=m; state._editSubMedio=null; state._editTcCuotas=undefined; state._editCantCuotas=undefined; render(); }
 function setEditSubMedio(s) { state._editSubMedio=s; render(); }
+function buildSplitLinkedInfo(g) {
+  const partes = state.gastos.filter(x=>x.splitGroupId===g.splitGroupId).sort((a,b)=>(b.splitPct||0)-(a.splitPct||0));
+  const otras = partes.filter(x=>String(x.id)!==String(g.id));
+  const listaOtras = otras.map(x=>`<div style="font-size:12px;color:var(--muted);padding:2px 0"><span style="color:${EMP[x.empresa]?.text||"var(--muted)"}">${x.empresa}</span> · ${x.splitPct}% = ${fmtMonto(x.monto,x.moneda)}</div>`).join("");
+  return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:14px">
+    <div style="font-size:12px;color:var(--accent);margin-bottom:6px">⟂ Parte de una división (${g.splitPct}% de ${g.empresa})</div>
+    ${listaOtras}
+    <div style="display:flex;gap:8px;align-items:flex-end;margin-top:8px">
+      <div class="field" style="margin:0;flex:1"><span class="label">Monto total correcto a dividir</span><input type="number" id="edit-split-total" step="0.01" placeholder="Ej: 45000"></div>
+      <button onclick="recalcularSplitDesdeEdicion()" style="padding:9px 12px;background:var(--accent);color:#0F0F11;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">Recalcular ${partes.length}</button>
+    </div>
+  </div>`;
+}
+
+function recalcularSplitDesdeEdicion() {
+  const g = state.gastoEditando;
+  if(!g || !g.splitGroupId) return;
+  const input = document.getElementById('edit-split-total');
+  const total = parseFloat(input ? input.value : "");
+  if(!total || total<=0) return showToast("⚠ Ingresá un monto total válido");
+  const partes = state.gastos.filter(x=>x.splitGroupId===g.splitGroupId);
+  state.gastos = state.gastos.map(x=>x.splitGroupId===g.splitGroupId
+    ? {...x, monto: Math.round(total*(x.splitPct||0)/100*100)/100, updatedAt: Date.now()}
+    : x);
+  saveAll();
+  clearEditState();
+  setState({gastoEditando:null});
+  showToast(`✓ ${partes.length} gastos recalculados`);
+}
+
 function guardarEdicion() {
   const g = state.gastoEditando;
   if(!g) return;
