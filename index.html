@@ -1133,6 +1133,15 @@ function buildResumen() {
       ${hayFiltroFecha?`<button onclick="setState({exportDesde:'',exportHasta:''})" style="margin-top:8px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:12px;cursor:pointer">✕ Quitar filtro de fecha</button>`:""}
     </div>
     <button onclick="exportarExcel()" style="width:100%;padding:13px;background:linear-gradient(135deg,#065F46,#059669);color:white;border:none;border-radius:8px;font-size:14px;font-weight:600">⬇ Exportar a Excel${labelFecha}</button>
+    <div style="border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:16px">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:600">Importar desde Excel</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Usá la misma plantilla del botón Exportar (mismas columnas). Se agregan como gastos nuevos; no reemplaza ni actualiza los existentes.</div>
+      <div class="upload-zone" onclick="document.getElementById('fileInputExcel').click()">
+        <div style="font-size:22px">📊</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:6px">Tocá para elegir un archivo .xlsx</div>
+      </div>
+      <input type="file" id="fileInputExcel" accept=".xlsx" style="display:none" onchange="handleImportExcel(this)">
+    </div>
   </div>`;
 }
 
@@ -1223,6 +1232,8 @@ function attachEvents() {
   // file input
   const fi = document.getElementById("fileInput");
   if (fi) fi.onchange = function(){ handleFile(this); };
+  const fiExcel = document.getElementById("fileInputExcel");
+  if (fiExcel) fiExcel.onchange = function(){ handleImportExcel(this); };
   // cat drag & drop
   if (state.showCats || state.tab==="categorias") initCatDrag();
 }
@@ -1849,6 +1860,122 @@ function aplicarEstilosHoja(ws, rows, numCatCols) {
   widths.forEach((w,i) => { ws.getColumn(i+1).width = w; });
   ws.views = [{ state:"frozen", ySplit:1 }];
   ws.autoFilter = { from:{row:1,column:1}, to:{row:1,column:totalCols} };
+}
+
+// ── Importación desde Excel ────────────────────────────────────
+function parseFechaImport(val) {
+  if (val === null || val === undefined || val === "") return null;
+  if (val instanceof Date) {
+    const y=val.getFullYear(), m=String(val.getMonth()+1).padStart(2,"0"), d=String(val.getDate()).padStart(2,"0");
+    return `${y}-${m}-${d}`;
+  }
+  if (typeof val === "number") {
+    // Serial de fecha de Excel (días desde 1899-12-30)
+    const ms = Math.round((val - 25569) * 86400 * 1000);
+    const d = new Date(ms);
+    const y=d.getUTCFullYear(), m=String(d.getUTCMonth()+1).padStart(2,"0"), day=String(d.getUTCDate()).padStart(2,"0");
+    return `${y}-${m}-${day}`;
+  }
+  const s = String(val).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const dmy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (dmy) { const [,d,m,y]=dmy; return `${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`; }
+  const parsed = new Date(s);
+  if (!isNaN(parsed)) {
+    const y=parsed.getFullYear(), m=String(parsed.getMonth()+1).padStart(2,"0"), d=String(parsed.getDate()).padStart(2,"0");
+    return `${y}-${m}-${d}`;
+  }
+  return null;
+}
+
+async function handleImportExcel(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = "";
+  showToast("Leyendo archivo...");
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buf);
+
+    // Si hay una hoja "Todos" (export completo), usar solo esa para no duplicar
+    // lo que ya está repetido en las hojas por empresa.
+    const todosSheet = wb.worksheets.find(ws => ws.name === "Todos");
+    const hojas = todosSheet ? [todosSheet] : wb.worksheets;
+
+    const nuevos = [];
+    const errores = [];
+
+    hojas.forEach(ws => {
+      const headerRow = ws.getRow(1);
+      const colMap = {};
+      const catCols = [];
+      headerRow.eachCell((cell, colIdx) => {
+        const h = String(cell.value||"").trim().toLowerCase();
+        if (h.startsWith("categoría") || h.startsWith("categoria")) catCols.push(colIdx);
+        else if (h) colMap[h] = colIdx;
+      });
+      const get = (row, key) => { const idx = colMap[key]; if(!idx) return ""; const c = row.getCell(idx); return (c && c.value !== null && c.value !== undefined) ? c.value : ""; };
+
+      const totalRows = ws.rowCount;
+      for (let r = 2; r <= totalRows; r++) {
+        const row = ws.getRow(r);
+        if (row.actualCellCount === 0) continue;
+
+        const empresaRaw = String(get(row,"empresa")||"").trim();
+        const empresa = EMPRESAS.find(e => e.toLowerCase() === empresaRaw.toLowerCase());
+        const monto = parseFloat(get(row,"monto total"));
+        const fecha = parseFechaImport(get(row,"fecha"));
+
+        if (!empresa) { errores.push(`Hoja "${ws.name}" fila ${r}: empresa "${empresaRaw}" no reconocida`); continue; }
+        if (!fecha) { errores.push(`Hoja "${ws.name}" fila ${r}: fecha inválida`); continue; }
+        if (!monto || monto<=0) { errores.push(`Hoja "${ws.name}" fila ${r}: monto inválido`); continue; }
+
+        const categorias = catCols.map(ci => { const c = row.getCell(ci); return (c && c.value) ? String(c.value).trim() : ""; }).filter(Boolean);
+        const medioBase = String(get(row,"medio de pago")||"").trim();
+        const subtipo = String(get(row,"subtipo")||"").trim();
+        const monedaRaw = String(get(row,"moneda")||"").trim();
+        const moneda = ["ARS","U$S","Euros","CLP"].includes(monedaRaw) ? monedaRaw : "ARS";
+        const cantCuotasRaw = get(row,"cant. cuotas");
+        const cantCuotas = cantCuotasRaw ? parseInt(cantCuotasRaw) : null;
+        const montoCuotaRaw = get(row,"monto/cuota");
+        let montoCuota = montoCuotaRaw ? parseFloat(montoCuotaRaw) : null;
+        if (!montoCuota && cantCuotas>0) montoCuota = Math.round(monto/cantCuotas*100)/100;
+
+        nuevos.push({
+          id: Date.now() + nuevos.length,
+          empresa, fecha,
+          titular: String(get(row,"titular/comercio")||"").trim(),
+          desc: String(get(row,"descripción")||get(row,"descripcion")||"").trim() || "Sin descripción",
+          categorias: categorias.length ? categorias : ["Sin categoría"],
+          medio: medioStr(medioBase||null, subtipo||null) || medioBase || "No especificado",
+          moneda, monto,
+          cantCuotas: cantCuotas>0?cantCuotas:null,
+          montoCuota: montoCuota>0?montoCuota:null,
+          nota: String(get(row,"nota")||"").trim(),
+          updatedAt: Date.now(),
+        });
+      }
+    });
+
+    if (!nuevos.length) {
+      if (errores.length) console.warn("Errores de importación:", errores);
+      showToast(errores.length ? `⚠ No se importó nada (${errores.length} filas con error, ver consola)` : "⚠ El archivo no tiene filas para importar");
+      return;
+    }
+
+    const msg = `¿Importar ${nuevos.length} gasto${nuevos.length!==1?"s":""}?` + (errores.length ? `\n\n${errores.length} fila${errores.length!==1?"s":""} se van a omitir por datos inválidos (detalle en la consola).` : "");
+    if (!confirm(msg)) return;
+
+    state.gastos = [...state.gastos, ...nuevos];
+    saveAll();
+    render();
+    if (errores.length) console.warn("Filas omitidas en la importación:", errores);
+    showToast(`✓ ${nuevos.length} gastos importados${errores.length?` (${errores.length} omitidos)`:""}`);
+  } catch(e) {
+    console.error("Error importando Excel:", e);
+    showToast("⚠ Error leyendo el archivo: " + e.message);
+  }
 }
 
 async function exportarExcel(soloEmp) {
