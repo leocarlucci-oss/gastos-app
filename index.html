@@ -1778,7 +1778,13 @@ function fmtMonedaExcel(moneda) {
   return '"$ "#,##0.00';
 }
 
-function aplicarEstilosHoja(ws, rows) {
+function aplicarEstilosHoja(ws, rows, numCatCols) {
+  numCatCols = numCatCols || 1;
+  const colMonedaIdx0 = 6 + numCatCols;       // índice 0-based dentro del array de la fila
+  const colMontoTotal1 = 8 + numCatCols;      // columna 1-based de Excel
+  const colMontoCuota1 = 10 + numCatCols;     // columna 1-based de Excel
+  const totalCols = 11 + numCatCols;
+
   const HEADER_FILL = { type:"pattern", pattern:"solid", fgColor:{argb:"FF1E3A5F"} };
   const HEADER_FONT = { name:"Arial", bold:true, color:{argb:"FFFFFFFF"}, size:10 };
   const BODY_FONT   = { name:"Arial", size:10 };
@@ -1796,7 +1802,7 @@ function aplicarEstilosHoja(ws, rows) {
   rows.forEach((row, ri) => {
     const exRow = ws.getRow(ri + 2);
     const zebra = ri % 2 === 0;
-    const moneda = row[7] || "ARS"; // col index 7 = Moneda
+    const moneda = row[colMonedaIdx0] || "ARS";
     exRow.eachCell({ includeEmpty:true }, (cell, colIdx) => {
       cell.font = BODY_FONT;
       cell.border = BORDER;
@@ -1806,7 +1812,7 @@ function aplicarEstilosHoja(ws, rows) {
         const d = new Date(cell.value + "T00:00:00");
         if (!isNaN(d)) { cell.value = d; cell.numFmt = "dd/mm/yyyy"; }
       }
-      if ((colIdx === 9 || colIdx === 11) && typeof cell.value === "number") {
+      if ((colIdx === colMontoTotal1 || colIdx === colMontoCuota1) && typeof cell.value === "number") {
         cell.numFmt = fmtMonedaExcel(moneda);
         cell.alignment = { vertical:"middle", horizontal:"right" };
       }
@@ -1814,18 +1820,20 @@ function aplicarEstilosHoja(ws, rows) {
     exRow.height = 18;
   });
 
-  [12,12,24,32,20,16,16,8,14,10,14,28].forEach((w,i) => { ws.getColumn(i+1).width = w; });
+  const widths = [12,12,24,32, ...Array(numCatCols).fill(18), 16,16,8,14,10,14,28];
+  widths.forEach((w,i) => { ws.getColumn(i+1).width = w; });
   ws.views = [{ state:"frozen", ySplit:1 }];
-  ws.autoFilter = { from:{row:1,column:1}, to:{row:1,column:12} };
+  ws.autoFilter = { from:{row:1,column:1}, to:{row:1,column:totalCols} };
 }
 
 async function exportarExcel(soloEmp) {
   if(!state.gastos.length) return showToast("No hay gastos para exportar");
   const wb = new ExcelJS.Workbook();
   wb.creator = "Gastos App"; wb.created = new Date();
-  const headers = ["Fecha","Empresa","Titular/Comercio","Descripción","Categoría","Medio de pago","Subtipo","Moneda","Monto Total","Cant. Cuotas","Monto/Cuota","Nota"];
   const splitMedio = g => { const p=(g.medio||"").split(" · "); return [p[0]||"",p[1]||""]; };
-  const toRow = g => [g.fecha, g.empresa, g.titular||"", g.desc, getCats(g).join(", "), ...splitMedio(g), g.moneda||"ARS", g.monto, g.cantCuotas||"", g.montoCuota||"", g.nota||""];
+  const catHeaders = n => n<=1 ? ["Categoría"] : Array.from({length:n},(_,i)=>`Categoría ${i+1}`);
+  const buildHeaders = n => ["Fecha","Empresa","Titular/Comercio","Descripción",...catHeaders(n),"Medio de pago","Subtipo","Moneda","Monto Total","Cant. Cuotas","Monto/Cuota","Nota"];
+  const toRow = (g,n) => { const cats=getCats(g); const catCols=Array.from({length:n},(_,i)=>cats[i]||""); return [g.fecha, g.empresa, g.titular||"", g.desc, ...catCols, ...splitMedio(g), g.moneda||"ARS", g.monto, g.cantCuotas||"", g.montoCuota||"", g.nota||""]; };
 
   const descargar = async (nombre) => {
     const buf = await wb.xlsx.writeBuffer();
@@ -1837,29 +1845,33 @@ async function exportarExcel(soloEmp) {
   const fechaFiltro = g => (!state.exportDesde||g.fecha>=state.exportDesde)&&(!state.exportHasta||g.fecha<=state.exportHasta);
   const sufFecha = (state.exportDesde||state.exportHasta) ? `_${state.exportDesde||"inicio"}_${state.exportHasta||"hoy"}` : "";
 
-  if (soloEmp) {
-    const rows = state.gastos.filter(g=>g.empresa===soloEmp&&fechaFiltro(g)).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(toRow);
-    if (!rows.length) return showToast(`Sin gastos para ${soloEmp}${sufFecha?" en ese período":""}`);
-    const ws = wb.addWorksheet(soloEmp);
+  const addSheet = (nombreHoja, gastosArr) => {
+    const numCat = Math.max(1, ...gastosArr.map(g=>getCats(g).length));
+    const headers = buildHeaders(numCat);
+    const rows = gastosArr.map(g=>toRow(g,numCat));
+    const ws = wb.addWorksheet(nombreHoja);
     ws.addRow(headers); rows.forEach(r=>ws.addRow(r));
-    aplicarEstilosHoja(ws, rows);
+    aplicarEstilosHoja(ws, rows, numCat);
+    return rows.length;
+  };
+
+  if (soloEmp) {
+    const gastosArr = state.gastos.filter(g=>g.empresa===soloEmp&&fechaFiltro(g)).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha));
+    if (!gastosArr.length) return showToast(`Sin gastos para ${soloEmp}${sufFecha?" en ese período":""}`);
+    const n = addSheet(soloEmp, gastosArr);
     await descargar(`gastos_${soloEmp}${sufFecha}_${hoy()}.xlsx`);
-    showToast(`✓ Excel ${soloEmp} exportado (${rows.length} gastos)`);
+    showToast(`✓ Excel ${soloEmp} exportado (${n} gastos)`);
     return;
   }
 
   EMPRESAS.forEach(emp => {
-    const rows = state.gastos.filter(g=>g.empresa===emp&&fechaFiltro(g)).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(toRow);
-    const ws = wb.addWorksheet(emp);
-    ws.addRow(headers); rows.forEach(r=>ws.addRow(r));
-    aplicarEstilosHoja(ws, rows);
+    const gastosArr = state.gastos.filter(g=>g.empresa===emp&&fechaFiltro(g)).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha));
+    addSheet(emp, gastosArr);
   });
-  const allRows = [...state.gastos].filter(fechaFiltro).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha)).map(toRow);
-  const wsAll = wb.addWorksheet("Todos");
-  wsAll.addRow(headers); allRows.forEach(r=>wsAll.addRow(r));
-  aplicarEstilosHoja(wsAll, allRows);
+  const allArr = [...state.gastos].filter(fechaFiltro).sort((a,b)=>new Date(a.fecha)-new Date(b.fecha));
+  const totalN = addSheet("Todos", allArr);
   await descargar(`gastos${sufFecha}_${hoy()}.xlsx`);
-  showToast(`✓ Excel exportado (${allRows.length} gastos)`);
+  showToast(`✓ Excel exportado (${totalN} gastos)`);
 }
 
 async function exportarBusqueda() {
@@ -1867,14 +1879,20 @@ async function exportarBusqueda() {
   if(!resultados||!resultados.length) return showToast("Sin resultados para exportar");
   const splitMedio = g => { const p=(g.medio||"").split(" · "); return [p[0]||"",p[1]||""]; };
   const sorted = [...resultados].sort((a,b)=>new Date(a.fecha)-new Date(b.fecha));
-  const headers = ["Fecha","Empresa","Titular/Comercio","Descripción","Categoría","Medio de pago","Subtipo","Moneda","Monto Total","Cant. Cuotas","Monto/Cuota","Nota"];
-  const rows = sorted.map(g=>[g.fecha, g.empresa, g.titular||"", g.desc, getCats(g).join(", "), ...splitMedio(g), g.moneda||"ARS", g.monto, g.cantCuotas||"", g.montoCuota||"", g.nota||""]);
+  const numCat = Math.max(1, ...sorted.map(g=>getCats(g).length));
+  const catHeaders = numCat<=1 ? ["Categoría"] : Array.from({length:numCat},(_,i)=>`Categoría ${i+1}`);
+  const headers = ["Fecha","Empresa","Titular/Comercio","Descripción",...catHeaders,"Medio de pago","Subtipo","Moneda","Monto Total","Cant. Cuotas","Monto/Cuota","Nota"];
+  const rows = sorted.map(g=>{
+    const cats = getCats(g);
+    const catCols = Array.from({length:numCat},(_,i)=>cats[i]||"");
+    return [g.fecha, g.empresa, g.titular||"", g.desc, ...catCols, ...splitMedio(g), g.moneda||"ARS", g.monto, g.cantCuotas||"", g.montoCuota||"", g.nota||""];
+  });
   const wb = new ExcelJS.Workbook();
   wb.creator = "Gastos App"; wb.created = new Date();
   const labelHoja = (state.busqueda||state.filtroBEmp||(state.filtroBCats&&state.filtroBCats.join("+"))||"busqueda").replace(/[^a-zA-Z0-9 áéíóúñÁÉÍÓÚÑ+]/g,"").trim().slice(0,28) || "Busqueda";
   const ws = wb.addWorksheet(labelHoja);
   ws.addRow(headers); rows.forEach(r=>ws.addRow(r));
-  aplicarEstilosHoja(ws, rows);
+  aplicarEstilosHoja(ws, rows, numCat);
   const buf = await wb.xlsx.writeBuffer();
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([buf], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
