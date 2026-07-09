@@ -69,7 +69,6 @@ button{cursor:pointer;}
 .cats-modal{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:300;display:flex;align-items:center;justify-content:center;padding:16px;}
 .cats-box{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:420px;max-height:80vh;display:flex;flex-direction:column;}
 .cat-item{display:flex;align-items:center;gap:8px;background:var(--bg);border-radius:8px;padding:8px 12px;border:1px solid var(--border);margin-bottom:6px;}
-.plantilla-item{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:10px;margin-bottom:8px;}
 .res-card{border-radius:10px;padding:14px;}
 .ac-wrap{position:relative;}
 .ac-dropdown{position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;z-index:500;max-height:200px;overflow-y:auto;margin-top:2px;box-shadow:0 4px 16px rgba(0,0,0,.4);}
@@ -661,7 +660,6 @@ function buildApp() {
     ${buildTabs()}
     ${state.tab==="cargar"   ? buildCargar()    : ""}
     ${state.tab==="ia"       ? buildIA()        : ""}
-    ${state.tab==="frecuentes"? buildFrecuentes(): ""}
     ${state.tab==="lista"    ? buildLista()     : ""}
     ${state.tab==="buscar"   ? buildBuscar()    : ""}
     ${state.tab==="resumen"  ? buildResumen()   : ""}
@@ -698,7 +696,7 @@ function buildHeader() {
 }
 
 function buildTabs() {
-  const tabs = [["cargar","＋ Cargar"],["ia","✦ IA"],["frecuentes","★ Frec."],["lista","≡ Gastos"],["buscar","🔍 Buscar"],["resumen","◈ Total"],["categorias","🏷 Cat."]];
+  const tabs = [["cargar","＋ Cargar"],["ia","✦ IA"],["lista","≡ Gastos"],["buscar","🔍 Buscar"],["resumen","◈ Total"],["categorias","🏷 Cat."]];
   return `<div class="tabs">${tabs.map(([id,label])=>`<button class="tab${state.tab===id?" active":""}" onclick="setTab('${id}')">${label}</button>`).join("")}</div>`;
 }
 
@@ -982,29 +980,6 @@ function buildIA() {
   </div>`;
 }
 
-function buildFrecuentes() {
-  const plantillasHTML = state.plantillas.length
-    ? state.plantillas.map(p=>`
-      <div class="plantilla-item">
-        <div class="dot" style="background:${EMP[p.empresa]?.border||"#666"}"></div>
-        <div style="flex:1;min-width:0">
-          ${p.titular?`<div class="gasto-desc">${esc(p.titular)}</div>`:""}
-          <div class="${p.titular?"gasto-meta":"gasto-desc"}">${esc(p.desc)}</div>
-          <div class="gasto-meta">${p.empresa} · ${p.medio||"—"} · ${fmtMonto(p.monto,p.moneda)}</div>
-        </div>
-        <button onclick="usarPlantilla(${p.id||p.plantillaId})" style="padding:5px 12px;border-radius:6px;background:rgba(245,158,11,.12);border:1px solid var(--accent);color:var(--accent);font-size:12px;flex-shrink:0">Usar</button>
-        <button onclick="eliminarPlantilla(${p.id||p.plantillaId})" class="btn-icon">🗑</button>
-      </div>`).join("")
-    : `<div style="text-align:center;padding:20px 0;color:var(--muted);font-size:13px">Guardá un gasto como plantilla desde ≡ Gastos tocando ★</div>`;
-
-
-  return `
-    <div class="panel">
-      <span class="label">★ Mis plantillas</span>
-      ${plantillasHTML}
-    </div>`;
-}
-
 const PAGE_SIZE = 50;
 function buildLista() {
   const filtrados = state.filtro==="Todos" ? state.gastos : state.gastos.filter(g=>g.empresa===state.filtro);
@@ -1026,7 +1001,6 @@ function buildLista() {
         <div>${fmtMonto(g.monto,g.moneda)}</div>
         ${g.moneda&&g.moneda!=="ARS"?`<div style="font-size:10px;color:var(--muted)">${g.moneda}</div>`:""}
       </div>
-      <button class="btn-icon" onclick="event.stopPropagation();guardarPlantilla(${g.id})" title="Guardar como plantilla">★</button>
       <button class="btn-icon" onclick="event.stopPropagation();editarGasto(${g.id})" title="Editar">✎</button>
       <button class="btn-icon" onclick="event.stopPropagation();eliminarGasto(${g.id})">✕</button>
     </div>`).join("") : `<div style="text-align:center;padding:32px;color:var(--muted);font-size:13px">Sin gastos aún.</div>`;
@@ -1485,41 +1459,6 @@ function eliminarGasto(id) {
   state.gastos=state.gastos.filter(g=>String(g.id)!==String(id));
   state.deletedIds=[...(state.deletedIds||[]),id];
   saveAll(); render();
-}
-
-function guardarPlantilla(id) {
-  const g = state.gastos.find(x=>String(x.id)===String(id));
-  if(!g) return;
-  if(state.plantillas.find(p=>p.empresa===g.empresa&&p.desc===g.desc)) return showToast("Ya existe en plantillas");
-  state.plantillas = [...state.plantillas,{...g,plantillaId:Date.now()}];
-  saveAll(); showToast("★ Guardada como plantilla"); render();
-}
-
-function eliminarPlantilla(id) {
-  const nid = Number(id);
-  // Buscar la plantilla para guardar ambos IDs como tombstone
-  const target = state.plantillas.find(p => p.id === nid || p.plantillaId === nid || p.id === id || p.plantillaId === id);
-  state.plantillas = state.plantillas.filter(p => {
-    return p.id !== nid && p.plantillaId !== nid && p.id !== id && p.plantillaId !== id;
-  });
-  const tombstones = [nid];
-  if (target) {
-    if (target.id) tombstones.push(Number(target.id));
-    if (target.plantillaId) tombstones.push(Number(target.plantillaId));
-  }
-  state.deletedPlantillaIds = [...new Set([...state.deletedPlantillaIds, ...tombstones])];
-  localStorage.setItem("deleted_plants_v1", JSON.stringify(state.deletedPlantillaIds));
-  saveAll(); render();
-}
-
-function usarPlantilla(id) {
-  const p = state.plantillas.find(x=>x.id===id||x.plantillaId===id);
-  if(p) { clearModalState(); setState({plantillaEnUso:p}); }
-}
-
-function usarPlantilla_auto(id) {
-  const g = state.gastos.find(x=>x.id===id);
-  if(g) { clearModalState(); setState({plantillaEnUso:g}); }
 }
 
 function clearModalState() {
