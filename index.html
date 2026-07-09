@@ -1541,6 +1541,10 @@ function editCat(i) {
     replaceCatInGastos(oldName, newName);
   }
   state.categorias = state.categorias.map((c,j) => j===i ? newName : c);
+  // Tombstone del nombre viejo: si no se marca como eliminado, el próximo sync con Drive
+  // (que todavía tiene el nombre viejo) lo trae de vuelta junto al nuevo.
+  state.deletedCategorias = [...new Set([...state.deletedCategorias, oldName])].filter(c=>c!==newName);
+  localStorage.setItem("deleted_cats_v1", JSON.stringify(state.deletedCategorias));
   saveAll(); render();
 }
 
