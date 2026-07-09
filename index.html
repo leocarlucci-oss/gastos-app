@@ -1862,6 +1862,61 @@ function aplicarEstilosHoja(ws, rows, numCatCols) {
   ws.autoFilter = { from:{row:1,column:1}, to:{row:1,column:totalCols} };
 }
 
+function colLetter(n) {
+  let s = "";
+  while (n > 0) { const m = (n-1) % 26; s = String.fromCharCode(65+m) + s; n = Math.floor((n-1)/26); }
+  return s;
+}
+
+// Crea una hoja oculta con las listas maestras (empresas, categorías, medios, subtipos, monedas)
+// y devuelve los rangos para usar en las validaciones de datos (dropdowns) de las demás hojas.
+function crearHojaListas(wb) {
+  const ws = wb.addWorksheet("Listas");
+  ws.state = "hidden";
+  const medios = Object.keys(MEDIOS).sort((a,b)=>a.localeCompare(b));
+  const subtiposFlat = [...new Set(Object.values(MEDIOS).flatMap(m=>m.sub||[]))].sort((a,b)=>a.localeCompare(b));
+  const monedas = ["ARS","U$S","Euros","CLP"];
+  const cols = [
+    {header:"Empresa", values: EMPRESAS},
+    {header:"Categoría", values: state.categorias},
+    {header:"Medio de pago", values: medios},
+    {header:"Subtipo", values: subtiposFlat},
+    {header:"Moneda", values: monedas},
+  ];
+  cols.forEach((c, ci) => {
+    ws.getCell(1, ci+1).value = c.header;
+    c.values.forEach((v, ri) => { ws.getCell(ri+2, ci+1).value = v; });
+  });
+  const rango = (colIdx1, n) => `Listas!$${colLetter(colIdx1)}$2:$${colLetter(colIdx1)}$${Math.max(n,1)+1}`;
+  return {
+    empresaRange: rango(1, EMPRESAS.length),
+    categoriaRange: rango(2, state.categorias.length),
+    medioRange: rango(3, medios.length),
+    subtipoRange: rango(4, subtiposFlat.length),
+    monedaRange: rango(5, monedas.length),
+  };
+}
+
+// Aplica dropdowns (validación de datos) a una hoja de gastos, incluyendo filas vacías
+// para que al agregar filas nuevas para carga masiva también tengan la lista.
+function aplicarValidacionesHoja(ws, numCatCols, ranges, maxFilas) {
+  maxFilas = maxFilas || 500;
+  const colEmpresa = colLetter(2);
+  const colMedio = colLetter(5+numCatCols);
+  const colSubtipo = colLetter(6+numCatCols);
+  const colMoneda = colLetter(7+numCatCols);
+  const dv = (range) => ({ type:"list", allowBlank:true, formulae:[range] });
+
+  ws.dataValidations.add(`${colEmpresa}2:${colEmpresa}${maxFilas}`, dv(ranges.empresaRange));
+  for (let c=0; c<numCatCols; c++) {
+    const colC = colLetter(5+c);
+    ws.dataValidations.add(`${colC}2:${colC}${maxFilas}`, dv(ranges.categoriaRange));
+  }
+  ws.dataValidations.add(`${colMedio}2:${colMedio}${maxFilas}`, dv(ranges.medioRange));
+  ws.dataValidations.add(`${colSubtipo}2:${colSubtipo}${maxFilas}`, dv(ranges.subtipoRange));
+  ws.dataValidations.add(`${colMoneda}2:${colMoneda}${maxFilas}`, dv(ranges.monedaRange));
+}
+
 // ── Importación desde Excel ────────────────────────────────────
 function parseFechaImport(val) {
   if (val === null || val === undefined || val === "") return null;
@@ -1899,9 +1954,11 @@ async function handleImportExcel(input) {
     await wb.xlsx.load(buf);
 
     // Si hay una hoja "Todos" (export completo), usar solo esa para no duplicar
-    // lo que ya está repetido en las hojas por empresa.
-    const todosSheet = wb.worksheets.find(ws => ws.name === "Todos");
-    const hojas = todosSheet ? [todosSheet] : wb.worksheets;
+    // lo que ya está repetido en las hojas por empresa. La hoja "Listas" es interna
+    // (fuente de los desplegables) y nunca se procesa como datos.
+    const hojasDatos = wb.worksheets.filter(ws => ws.name !== "Listas");
+    const todosSheet = hojasDatos.find(ws => ws.name === "Todos");
+    const hojas = todosSheet ? [todosSheet] : hojasDatos;
 
     const nuevos = [];
     const errores = [];
@@ -1997,6 +2054,7 @@ async function exportarExcel(soloEmp) {
   const fechaFiltro = g => (!state.exportDesde||g.fecha>=state.exportDesde)&&(!state.exportHasta||g.fecha<=state.exportHasta);
   const sufFecha = (state.exportDesde||state.exportHasta) ? `_${state.exportDesde||"inicio"}_${state.exportHasta||"hoy"}` : "";
 
+  let ranges = null;
   const addSheet = (nombreHoja, gastosArr) => {
     const numCat = Math.max(1, ...gastosArr.map(g=>getCats(g).length));
     const headers = buildHeaders(numCat);
@@ -2004,6 +2062,8 @@ async function exportarExcel(soloEmp) {
     const ws = wb.addWorksheet(nombreHoja);
     ws.addRow(headers); rows.forEach(r=>ws.addRow(r));
     aplicarEstilosHoja(ws, rows, numCat);
+    if (!ranges) ranges = crearHojaListas(wb);
+    aplicarValidacionesHoja(ws, numCat, ranges);
     return rows.length;
   };
 
@@ -2045,6 +2105,8 @@ async function exportarBusqueda() {
   const ws = wb.addWorksheet(labelHoja);
   ws.addRow(headers); rows.forEach(r=>ws.addRow(r));
   aplicarEstilosHoja(ws, rows, numCat);
+  const ranges = crearHojaListas(wb);
+  aplicarValidacionesHoja(ws, numCat, ranges);
   const buf = await wb.xlsx.writeBuffer();
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([buf], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
