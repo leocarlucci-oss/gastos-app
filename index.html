@@ -121,8 +121,6 @@ let state = {
   gastos: sanearIds(load("gastos_v5", [])),
   categorias: load("cats_v5", CATEGORIAS_DEFAULT),
   deletedCategorias: load("deleted_cats_v1", []),
-  plantillas: load("plants_v5", []),
-  deletedPlantillaIds: load("deleted_plants_v1", []),
   // form
   empresa: null, desc:"", titular:"", monto:"", moneda:"ARS", fecha:hoy(),
   medio:null, subMedio:null, categoriasSel:[], nota:"", cantCuotas:"", tcCuotas:false,
@@ -176,7 +174,6 @@ function sanearIds(gastos) {
 function saveAll() {
   localStorage.setItem("gastos_v5", JSON.stringify(state.gastos));
   localStorage.setItem("cats_v5", JSON.stringify(state.categorias));
-  localStorage.setItem("plants_v5", JSON.stringify(state.plantillas));
   localStorage.setItem("local_modified", String(Date.now()));
   syncToDrive();
 }
@@ -391,36 +388,12 @@ async function syncToDrive() {
       state.categorias = mergedCats;
       localStorage.setItem("cats_v5", JSON.stringify(state.categorias));
     }
-    // Plantillas: merge respetando eliminadas localmente
-    {
-      const driveDeleted = driveData.deletedPlantillaIds || [];
-      const allDeletedPlants = [...new Set([...state.deletedPlantillaIds, ...driveDeleted])];
-      state.deletedPlantillaIds = allDeletedPlants;
-      localStorage.setItem("deleted_plants_v1", JSON.stringify(allDeletedPlants));
-
-      const drivePlants = (driveData.plantillas || []).filter(p => {
-        return !allDeletedPlants.includes(Number(p.id)) && !allDeletedPlants.includes(Number(p.plantillaId));
-      });
-      const localPlants = state.plantillas.filter(p => {
-        return !allDeletedPlants.includes(Number(p.id)) && !allDeletedPlants.includes(Number(p.plantillaId));
-      });
-      // Unir sin duplicados
-      const merged = [...localPlants];
-      for (const dp of drivePlants) {
-        const pid = dp.plantillaId || dp.id;
-        if (!merged.find(lp => (lp.plantillaId || lp.id) === pid)) merged.push(dp);
-      }
-      state.plantillas = merged;
-      localStorage.setItem("plants_v5", JSON.stringify(state.plantillas));
-    }
 
     // 3. Backup diario y subir el resultado mergeado
     const toUpload = {
       gastos: state.gastos,
       categorias: state.categorias,
-      plantillas: state.plantillas,
       deletedIds: state.deletedIds,
-      deletedPlantillaIds: state.deletedPlantillaIds,
       deletedCategorias: state.deletedCategorias,
       lastSync: new Date().toISOString()
     };
@@ -2075,6 +2048,8 @@ async function exportarBusqueda() {
 }
 
 // ── Init ──────────────────────────────────────────────────────
+localStorage.removeItem("plants_v5");
+localStorage.removeItem("deleted_plants_v1");
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("/service-worker.js").catch(e => console.error("SW error:", e));
