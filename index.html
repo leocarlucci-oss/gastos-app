@@ -1109,7 +1109,7 @@ function buildResumen() {
     <button onclick="exportarExcel()" style="width:100%;padding:13px;background:linear-gradient(135deg,#065F46,#059669);color:white;border:none;border-radius:8px;font-size:14px;font-weight:600">⬇ Exportar a Excel${labelFecha}</button>
     <div style="border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:16px">
       <div style="font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:600">Importar desde Excel</div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Se agregan como gastos nuevos; no reemplaza ni actualiza los existentes.</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Se agregan como gastos nuevos; no reemplaza ni actualiza los existentes. La plantilla trae 3 columnas de categoría (podés dejar las que no uses vacías, o agregar "Categoría 4", "5"... si necesitás más).</div>
       <button onclick="descargarPlantillaExcel()" style="width:100%;padding:10px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--fg);font-size:12px;font-weight:600;cursor:pointer;margin-bottom:10px">📄 Descargar plantilla vacía (con desplegables)</button>
       <div class="upload-zone" onclick="document.getElementById('fileInputExcel').click()">
         <div style="font-size:22px">📊</div>
@@ -1978,12 +1978,14 @@ async function handleImportExcel(input) {
 async function descargarPlantillaExcel() {
   const wb = new ExcelJS.Workbook();
   wb.creator = "Gastos App"; wb.created = new Date();
-  const headers = ["Fecha","Empresa","Titular/Comercio","Descripción","Categoría","Medio de pago","Subtipo","Moneda","Monto Total","Cant. Cuotas","Monto/Cuota","Nota"];
+  const numCat = 3;
+  const catHeaders = Array.from({length:numCat},(_,i)=>`Categoría ${i+1}`);
+  const headers = ["Fecha","Empresa","Titular/Comercio","Descripción",...catHeaders,"Medio de pago","Subtipo","Moneda","Monto Total","Cant. Cuotas","Monto/Cuota","Nota"];
   const ws = wb.addWorksheet("Plantilla");
   ws.addRow(headers);
-  aplicarEstilosHoja(ws, [], 1);
+  aplicarEstilosHoja(ws, [], numCat);
   const ranges = crearHojaListas(wb);
-  aplicarValidacionesHoja(ws, 1, ranges);
+  aplicarValidacionesHoja(ws, numCat, ranges);
   const buf = await wb.xlsx.writeBuffer();
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([buf], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
