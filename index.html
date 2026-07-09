@@ -126,7 +126,7 @@ let state = {
   deletedPlantillaIds: load("deleted_plants_v1", []),
   // form
   empresa: null, desc:"", titular:"", monto:"", moneda:"ARS", fecha:hoy(),
-  medio:null, subMedio:null, categoria:"", nota:"", cantCuotas:"", tcCuotas:false,
+  medio:null, subMedio:null, categoriasSel:[], nota:"", cantCuotas:"", tcCuotas:false,
   splitMode:false, splitParts:[{empresa:null,pct:50},{empresa:null,pct:50}],
   // ia
   empIA:null, textoLibre:"", iaLoading:false, iaResult:null,
@@ -137,7 +137,7 @@ let state = {
   vozActiva:false, vozStatus:"",
   // lista
   filtro:"Todos",
-  busqueda:"", filtroBEmp:"", filtroBCat:"", filtroBMedio:"", filtroDesde:"", filtroHasta:"",
+  busqueda:"", filtroBEmp:"", filtroBCats:[], filtroBMedio:"", filtroDesde:"", filtroHasta:"",
   exportDesde:"", exportHasta:"",
   // modales
   showCats:false, plantillaEnUso:null, sugerencia:null, gastoViendo:null, listPage:1,
@@ -676,6 +676,29 @@ function buildTabs() {
   return `<div class="tabs">${tabs.map(([id,label])=>`<button class="tab${state.tab===id?" active":""}" onclick="setTab('${id}')">${label}</button>`).join("")}</div>`;
 }
 
+function getCats(g) {
+  if (Array.isArray(g.categorias)) return g.categorias.filter(Boolean);
+  if (g.categoria) return [g.categoria];
+  return [];
+}
+function catsEnUso(name) { return state.gastos.filter(g => getCats(g).includes(name)).length; }
+function replaceCatInGastos(oldName, newName) {
+  // newName null => quitar la categoría; string => renombrarla
+  state.gastos = state.gastos.map(g=>{
+    const cats = getCats(g);
+    if (!cats.includes(oldName)) return g;
+    const nuevas = newName ? cats.map(c=>c===oldName?newName:c) : cats.filter(c=>c!==oldName);
+    return {...g, categorias: nuevas, updatedAt: Date.now()};
+  });
+}
+function buildCatMultiPicker(selected, toggleFn) {
+  const sel = selected || [];
+  return `<div class="emp-grid" style="grid-template-columns:repeat(auto-fill,minmax(88px,1fr))">${state.categorias.map((c,i)=>{
+    const active = sel.includes(c);
+    return `<button onclick="${toggleFn}(${i})" style="padding:8px 6px;border-radius:8px;border:2px solid ${active?"var(--accent)":"var(--border)"};background:${active?"rgba(245,158,11,.12)":"transparent"};color:${active?"var(--accent)":"var(--muted)"};font-size:12px;font-weight:${active?600:400};cursor:pointer">${active?"✓ ":""}${esc(c)}</button>`;
+  }).join("")}</div>`;
+}
+
 function buildEmpGrid(sel, onclickFn) {
   return `<div class="emp-grid">${EMPRESAS.map(e=>{
     const active=sel===e, c=EMP[e];
@@ -688,7 +711,7 @@ function buildMedioPicker(medio, subMedio, setFn, setSubFn) {
     const active=medio===k, c=MEDIOS[k].color;
     return `<button class="medio-tipo-btn" onclick="${setFn}('${k}')" style="border-color:${active?c:"var(--border)"};background:${active?c+"22":"transparent"};color:${active?c:"var(--muted)"};font-weight:${active?600:400}">${k}</button>`;
   }).join("");
-  const subs = medio ? `<div class="medio-subs">${[...MEDIOS[medio].sub].sort((a,b)=>a.localeCompare(b)).map(s=>{
+  const subs = (medio && MEDIOS[medio]) ? `<div class="medio-subs">${[...MEDIOS[medio].sub].sort((a,b)=>a.localeCompare(b)).map(s=>{
     const active=subMedio===s, c=MEDIOS[medio].color;
     return `<button class="medio-sub-btn" onclick="${setSubFn}('${s}')" style="border-color:${active?c:"var(--border)"};background:${active?c+"22":"transparent"};color:${active?c:"var(--muted)"}">${s}</button>`;
   }).join("")}</div>` : "";
@@ -749,7 +772,7 @@ function buildModalVerGasto() {
       </div>
       <div style="padding:0 4px">
         ${fila("Fecha", g.fecha?g.fecha.split("-").reverse().join("/"):"")}
-        ${fila("Categoría", g.categoria||"")}
+        ${fila("Categorías", getCats(g).join(", "))}
         ${fila("Medio de pago", medioBase||"")}
         ${medioSub?fila("Subtipo", medioSub):""}
         ${g.moneda&&g.moneda!=="ARS"?fila("Moneda", g.moneda):""}
@@ -775,11 +798,10 @@ function buildModalEditarGasto() {
   const eMonto = state._editMonto !== undefined ? state._editMonto : (g.monto||"");
   const eMoneda = state._editMoneda !== undefined ? state._editMoneda : (g.moneda||"ARS");
   const eFecha = state._editFecha !== undefined ? state._editFecha : (g.fecha||hoy());
-  const eCat = state._editCat !== undefined ? state._editCat : (g.categoria||"");
+  const eCats = state._editCats !== undefined ? state._editCats : getCats(g);
   const eNota = state._editNota !== undefined ? state._editNota : (g.nota||"");
   const eEmp = state._editEmpresa !== undefined ? state._editEmpresa : (g.empresa||null);
   const monOpts = ["ARS","U$S","Euros","CLP"].map(mo=>`<option${eMoneda===mo?" selected":""}>${mo}</option>`).join("");
-  const catOpts = state.categorias.map(c=>`<option${eCat===c?" selected":""}>${c}</option>`).join("");
   return `<div class="modal-overlay" onclick="if(event.target===this)cerrarEditarGasto()">
     <div class="modal">
       <div class="modal-header">
@@ -789,13 +811,12 @@ function buildModalEditarGasto() {
       <div class="field"><span class="label">Empresa</span>${buildEmpGrid(eEmp,"setEditEmpresa")}</div>
       <div class="field"><span class="label">Titular / Comercio</span><div class="ac-wrap"><input value="${esc(eTitular)}" oninput="state._editTitular=this.value;acTitular(this,'ac-modal')" onfocus="this.select();acTitular(this,'ac-modal')" onblur="setTimeout(()=>acCerrar('ac-modal'),200)" placeholder="Ej: YPF, Mercado Libre..." autocomplete="off"><div id="ac-modal" class="ac-dropdown" style="display:none"></div></div></div>
       <div class="field"><span class="label">Descripción</span><input value="${esc(eDesc)}" oninput="state._editDesc=this.value"></div>
-      <div class="field"><span class="label">Categoría</span>
-        <div style="display:flex;gap:6px;align-items:center">
-          <select style="flex:1" onchange="state._editCat=this.value"><option value="">Seleccioná...</option>${catOpts}</select>
-          <button onclick="editModalAddCat()" title="Nueva categoría" style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:15px;padding:4px 8px;cursor:pointer;white-space:nowrap">+</button>
-          <button onclick="editModalRenameCat()" title="Renombrar" style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:13px;padding:4px 8px;cursor:pointer;${eCat?'':'opacity:0.3;pointer-events:none'}">✎</button>
-          <button onclick="editModalDeleteCat()" title="Eliminar" style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:13px;padding:4px 8px;cursor:pointer;${eCat?'':'opacity:0.3;pointer-events:none'}">🗑</button>
-        </div>
+      <div class="field">
+        <span class="label" style="display:flex;justify-content:space-between;align-items:center">
+          <span>Categoría</span>
+          <button onclick="setState({showCats:true})" style="background:none;border:none;color:var(--accent);font-size:11px;font-family:monospace;text-transform:uppercase;letter-spacing:.5px">✎ editar</button>
+        </span>
+        ${buildCatMultiPicker(eCats,"toggleCatEdit")}
       </div>
       <div class="row2">
         <div class="field"><span class="label">Monto</span><input type="number" value="${eMonto}" oninput="state._editMonto=this.value" step="0.01"></div>
@@ -844,10 +865,7 @@ function buildCargar() {
         <span>Categoría</span>
         <button onclick="setState({showCats:true})" style="background:none;border:none;color:var(--accent);font-size:11px;font-family:monospace;text-transform:uppercase;letter-spacing:.5px">✎ editar</button>
       </span>
-      <select onchange="setState({categoria:this.value})">
-        <option value="">Seleccioná...</option>
-        ${state.categorias.map(c=>`<option${state.categoria===c?" selected":""}>${c}</option>`).join("")}
-      </select>
+      ${buildCatMultiPicker(state.categoriasSel,"toggleCatCargar")}
     </div>
     <div class="row2">
       <div class="field"><span class="label">Monto</span><input id="inp-monto" type="number" value="${state.monto}" oninput="setState({monto:this.value},false)" placeholder="0.00" step="0.01"></div>
@@ -880,9 +898,8 @@ function buildIA() {
     const eF = state._iaFecha!==undefined?state._iaFecha:(r.fecha||hoy());
     const eMed = state._iaMedio!==undefined?state._iaMedio:(r.medio||null);
     const eSub = state._iaSubMedio!==undefined?state._iaSubMedio:(r.subMedio||null);
-    const eCat = state._iaCat!==undefined?state._iaCat:(r.categoria||"");
+    const eCats = state._iaCats!==undefined?state._iaCats:(r.categoria?[r.categoria]:[]);
     const eNot = state._iaNota!==undefined?state._iaNota:"";
-    const catOpts = state.categorias.map(c=>`<option${eCat===c?" selected":""}>${c}</option>`).join("");
     const monOpts = ["ARS","U$S","Euros","CLP"].map(m=>`<option${eMon===m?" selected":""}>${m}</option>`).join("");
     resultHTML = `<div class="ia-result">
       <div style="color:var(--accent);font-weight:600;margin-bottom:12px">✓ Revisá y editá</div>
@@ -893,7 +910,7 @@ function buildIA() {
           <span>Categoría</span>
           <button onclick="setState({showCats:true})" style="background:none;border:none;color:var(--accent);font-size:11px;font-family:monospace;text-transform:uppercase;letter-spacing:.5px">✎ editar</button>
         </span>
-        <select onchange="setIACat(this.value)"><option value="">Seleccioná...</option>${catOpts}</select>
+        ${buildCatMultiPicker(eCats,"toggleCatIA")}
       </div>
       <div class="row2 field">
         <div><span class="label">Monto</span><input type="number" value="${eM}" oninput="state._iaMonto=this.value" step="0.01"></div>
@@ -976,6 +993,7 @@ function buildLista() {
       <div style="flex:1;min-width:0">
         <div class="gasto-desc">${g.titular?esc(g.titular):esc(g.desc)}</div>
         <div class="gasto-meta">${g.fecha.split("-").reverse().join("/")} · ${g.empresa} · ${g.medio||"—"}${g.titular?" · "+esc(g.desc):""}</div>
+        ${getCats(g).length?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(getCats(g).join(", "))}</div>`:""}
         ${g.nota?`<div class="gasto-nota">${esc(g.nota)}</div>`:""}
       </div>
       <div class="gasto-monto">
@@ -993,7 +1011,7 @@ function buildLista() {
 
 function buildBuscar() {
   const mediosDisp = Object.keys(MEDIOS).sort((a,b)=>a.localeCompare(b));
-  const hayActivos = !!(state.busqueda||state.filtroBEmp||state.filtroBCat||state.filtroBMedio||state.filtroDesde||state.filtroHasta);
+  const hayActivos = !!(state.busqueda||state.filtroBEmp||(state.filtroBCats&&state.filtroBCats.length)||state.filtroBMedio||state.filtroDesde||state.filtroHasta);
 
   const inputStyle = "width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--fg);font-size:13px;box-sizing:border-box;outline:none";
 
@@ -1004,21 +1022,16 @@ function buildBuscar() {
         style="${inputStyle};flex:1" autofocus>
       <span id="buscar-limpiar-wrap">${hayActivos?`<button onclick="limpiarFiltrosBusqueda()" style="padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:12px;cursor:pointer;white-space:nowrap">✕ Limpiar</button>`:""}</span>
     </div>
-    <div class="row2" style="margin-bottom:10px">
-      <div class="field" style="margin:0">
-        <span class="label">Empresa</span>
-        <select onchange="setState({filtroBEmp:this.value})" style="${inputStyle}">
-          <option value="">Todas</option>
-          ${EMPRESAS.map(e=>`<option${state.filtroBEmp===e?" selected":""}>${e}</option>`).join("")}
-        </select>
-      </div>
-      <div class="field" style="margin:0">
-        <span class="label">Categoría</span>
-        <select onchange="setState({filtroBCat:this.value})" style="${inputStyle}">
-          <option value="">Todas</option>
-          ${state.categorias.map(c=>`<option${state.filtroBCat===c?" selected":""}>${c}</option>`).join("")}
-        </select>
-      </div>
+    <div class="field" style="margin-bottom:10px">
+      <span class="label">Empresa</span>
+      <select onchange="setState({filtroBEmp:this.value})" style="${inputStyle}">
+        <option value="">Todas</option>
+        ${EMPRESAS.map(e=>`<option${state.filtroBEmp===e?" selected":""}>${e}</option>`).join("")}
+      </select>
+    </div>
+    <div class="field" style="margin-bottom:10px">
+      <span class="label">Categoría ${(state.filtroBCats&&state.filtroBCats.length>1)?'<span style="color:var(--muted);font-weight:400">(deben tener todas)</span>':''}</span>
+      ${buildCatMultiPicker(state.filtroBCats,"toggleFiltroCat")}
     </div>
     <div class="field" style="margin-bottom:10px">
       <span class="label">Medio de pago</span>
@@ -1130,7 +1143,7 @@ function buildModalPlantilla() {
   const mMonto = state._modalMonto !== undefined ? state._modalMonto : (p.monto||"");
   const mMoneda = state._modalMoneda !== undefined ? state._modalMoneda : (p.moneda||"ARS");
   const mFecha = state._modalFecha !== undefined ? state._modalFecha : hoy();
-  const mCat = state._modalCat !== undefined ? state._modalCat : (p.categoria||"");
+  const mCats = state._modalCats !== undefined ? state._modalCats : getCats(p);
   const mNota = state._modalNota !== undefined ? state._modalNota : (p.nota||"");
   const mEmp = state._modalEmpresa !== undefined ? state._modalEmpresa : (p.empresa||null);
 
@@ -1143,11 +1156,12 @@ function buildModalPlantilla() {
       <div class="field"><span class="label">Empresa</span>${buildEmpGrid(mEmp,"setModalEmpresa")}</div>
       <div class="field"><span class="label">Titular / Comercio</span><input value="${esc(mTitular)}" oninput="state._modalTitular=this.value" placeholder="Ej: YPF, Mercado Libre..."></div>
       <div class="field"><span class="label">Descripción</span><input value="${esc(mDesc)}" oninput="state._modalDesc=this.value"></div>
-      <div class="field"><span class="label">Categoría</span>
-        <select onchange="state._modalCat=this.value">
-          <option value="">Seleccioná...</option>
-          ${state.categorias.map(c=>`<option value="${esc(c)}"${mCat===c?" selected":""}>${esc(c)}</option>`).join("")}
-        </select>
+      <div class="field">
+        <span class="label" style="display:flex;justify-content:space-between;align-items:center">
+          <span>Categoría</span>
+          <button onclick="setState({showCats:true})" style="background:none;border:none;color:var(--accent);font-size:11px;font-family:monospace;text-transform:uppercase;letter-spacing:.5px">✎ editar</button>
+        </span>
+        ${buildCatMultiPicker(mCats,"toggleCatModal")}
       </div>
       <div class="row2">
         <div class="field"><span class="label">Monto</span><input type="number" value="${mMonto}" oninput="state._modalMonto=this.value" step="0.01"></div>
@@ -1282,7 +1296,7 @@ function buildBuscarResultsHTML() {
       <div style="flex:1;min-width:0">
         <div class="gasto-desc">${g.titular?esc(g.titular):esc(g.desc)}</div>
         <div class="gasto-meta">${g.fecha.split("-").reverse().join("/")} · ${g.empresa} · ${g.medio||"—"}${g.titular?" · "+esc(g.desc):""}</div>
-        ${g.categoria?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(g.categoria)}</div>`:""}
+        ${getCats(g).length?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(getCats(g).join(", "))}</div>`:""}
         ${g.nota?`<div class="gasto-nota">${esc(g.nota)}</div>`:""}
       </div>
       <div class="gasto-monto">
@@ -1303,7 +1317,7 @@ function buildBuscarResultsHTML() {
 }
 function busquedaInput(val) {
   state.busqueda = val;
-  const hayActivos = !!(state.busqueda||state.filtroBEmp||state.filtroBCat||state.filtroBMedio||state.filtroDesde||state.filtroHasta);
+  const hayActivos = !!(state.busqueda||state.filtroBEmp||(state.filtroBCats&&state.filtroBCats.length)||state.filtroBMedio||state.filtroDesde||state.filtroHasta);
   const limpiarEl = document.getElementById("buscar-limpiar-wrap");
   if (limpiarEl) limpiarEl.innerHTML = hayActivos
     ? '<button onclick="limpiarFiltrosBusqueda()" style="padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:12px;cursor:pointer;white-space:nowrap">✕ Limpiar</button>'
@@ -1311,19 +1325,24 @@ function busquedaInput(val) {
   const el = document.getElementById("buscar-results");
   if (el) el.innerHTML = buildBuscarResultsHTML();
 }
+function toggleFiltroCat(i) {
+  const c = state.categorias[i];
+  const sel = state.filtroBCats || [];
+  setState({filtroBCats: sel.includes(c) ? sel.filter(x=>x!==c) : [...sel, c]});
+}
 function getFiltradosBusqueda() {
   const q = (state.busqueda||"").toLowerCase().trim();
   const emp = state.filtroBEmp||"";
-  const cat = state.filtroBCat||"";
+  const cats = state.filtroBCats||[];
   const med = state.filtroBMedio||"";
   const desde = state.filtroDesde||"";
   const hasta = state.filtroHasta||"";
-  const hayFiltro = q||emp||cat||med||desde||hasta;
+  const hayFiltro = q||emp||cats.length||med||desde||hasta;
   if(!hayFiltro) return null;
   return [...state.gastos].filter(g=>{
     if(q && !((g.titular||"").toLowerCase().includes(q)||(g.desc||"").toLowerCase().includes(q)||(g.nota||"").toLowerCase().includes(q))) return false;
     if(emp && g.empresa!==emp) return false;
-    if(cat && (g.categoria||"")!==cat) return false;
+    if(cats.length) { const gc=getCats(g); if(!cats.every(c=>gc.includes(c))) return false; }
     if(med && !(g.medio||"").startsWith(med)) return false;
     if(desde && g.fecha<desde) return false;
     if(hasta && g.fecha>hasta) return false;
@@ -1332,10 +1351,16 @@ function getFiltradosBusqueda() {
 }
 
 function limpiarFiltrosBusqueda() {
-  setState({busqueda:"",filtroBEmp:"",filtroBCat:"",filtroBMedio:"",filtroDesde:"",filtroHasta:""});
+  setState({busqueda:"",filtroBEmp:"",filtroBCats:[],filtroBMedio:"",filtroDesde:"",filtroHasta:""});
 }
 function cargarMasGastos() { setState({listPage: state.listPage + 1}); }
 function setEmpresa(e) { setState({empresa:e}); }
+function toggleCatCargar(i) {
+  const c = state.categorias[i];
+  const sel = state.categoriasSel || [];
+  state.categoriasSel = sel.includes(c) ? sel.filter(x=>x!==c) : [...sel, c];
+  render();
+}
 function setEmpIA(e) { setState({empIA:e}); }
 function setModalEmpresa(e) { state._modalEmpresa=e; render(); }
 
@@ -1390,7 +1415,7 @@ function agregarGasto() {
   if(!state.monto||parseFloat(state.monto)<=0) return showToast("⚠ Ingresá un monto válido");
   const _cantCuotas = esCuotasMode(state.medio,state.tcCuotas)&&parseInt(state.cantCuotas)>0?parseInt(state.cantCuotas):null;
   const _montoCuota = _cantCuotas&&parseFloat(state.monto)>0?Math.round(parseFloat(state.monto)/_cantCuotas*100)/100:null;
-  const base = {desc,titular:state.titular.trim(),monto:parseFloat(state.monto),moneda:state.moneda,fecha:state.fecha,medio:medioStr(state.medio,state.subMedio)||"No especificado",categoria:state.categoria||"Sin categoría",nota:state.nota.trim(),cantCuotas:_cantCuotas,montoCuota:_montoCuota,updatedAt:Date.now()};
+  const base = {desc,titular:state.titular.trim(),monto:parseFloat(state.monto),moneda:state.moneda,fecha:state.fecha,medio:medioStr(state.medio,state.subMedio)||"No especificado",categorias:(state.categoriasSel&&state.categoriasSel.length)?state.categoriasSel:["Sin categoría"],nota:state.nota.trim(),cantCuotas:_cantCuotas,montoCuota:_montoCuota,updatedAt:Date.now()};
   if(state.splitMode) {
     if(splitSum(state.splitParts)!==100) return showToast("⚠ Los % deben sumar 100");
     if(state.splitParts.some(p=>!p.empresa)) return showToast("⚠ Asigná empresa a cada parte");
@@ -1404,7 +1429,7 @@ function agregarGasto() {
     showToast("✓ Gasto agregado");
   }
   saveAll();
-  setState({desc:"",titular:"",monto:"",fecha:hoy(),nota:"",categoria:"",medio:null,subMedio:null,empresa:null,moneda:"ARS",cantCuotas:"",tcCuotas:false,sugerencia:null});
+  setState({desc:"",titular:"",monto:"",fecha:hoy(),nota:"",categoriasSel:[],medio:null,subMedio:null,empresa:null,moneda:"ARS",cantCuotas:"",tcCuotas:false,sugerencia:null});
 }
 
 function eliminarGasto(id) {
@@ -1451,7 +1476,13 @@ function usarPlantilla_auto(id) {
 function clearModalState() {
   delete state._modalDesc; delete state._modalTitular; delete state._modalMonto; delete state._modalMoneda;
   delete state._modalFecha; delete state._modalMedio; delete state._modalSubMedio;
-  delete state._modalCat; delete state._modalNota; delete state._modalEmpresa;
+  delete state._modalCats; delete state._modalNota; delete state._modalEmpresa;
+}
+function toggleCatModal(i) {
+  const c = state.categorias[i];
+  const sel = state._modalCats !== undefined ? state._modalCats : getCats(state.plantillaEnUso||{});
+  state._modalCats = sel.includes(c) ? sel.filter(x=>x!==c) : [...sel, c];
+  render();
 }
 
 function cerrarModal() { clearModalState(); setState({plantillaEnUso:null}); }
@@ -1464,6 +1495,7 @@ function confirmarPlantilla() {
   if(!m||parseFloat(m)<=0) return showToast("⚠ Ingresá un monto válido");
   const medio = state._modalMedio !== undefined ? state._modalMedio : (p.medio||"").split(" · ")[0]||null;
   const subM = state._modalSubMedio !== undefined ? state._modalSubMedio : (p.medio||"").split(" · ")[1]||null;
+  const catsFinal = state._modalCats !== undefined ? state._modalCats : getCats(p);
   const nuevo = {
     id:Date.now(), empresa:emp,
     desc: state._modalDesc !== undefined ? state._modalDesc : p.desc,
@@ -1472,7 +1504,7 @@ function confirmarPlantilla() {
     moneda: state._modalMoneda !== undefined ? state._modalMoneda : (p.moneda||"ARS"),
     fecha: state._modalFecha !== undefined ? state._modalFecha : hoy(),
     medio: medioStr(medio,subM)||"No especificado",
-    categoria: state._modalCat !== undefined ? state._modalCat : (p.categoria||"Sin categoría"),
+    categorias: catsFinal.length ? catsFinal : ["Sin categoría"],
     nota: state._modalNota !== undefined ? state._modalNota : (p.nota||""),
     updatedAt: Date.now(),
   };
@@ -1488,7 +1520,7 @@ function addCat() { const v=document.getElementById("nueva-cat").value.trim(); i
 function delCat(i) {
   const removed = state.categorias[i];
   if (!removed) return;
-  const enUso = state.gastos.filter(g => g.categoria === removed).length;
+  const enUso = catsEnUso(removed);
   const msg = enUso > 0
     ? `"${removed}" está en ${enUso} gasto${enUso>1?'s':''}. ¿Eliminar la categoría de todos modos?`
     : `¿Eliminar la categoría "${removed}"?`;
@@ -1498,56 +1530,15 @@ function delCat(i) {
   localStorage.setItem("deleted_cats_v1", JSON.stringify(state.deletedCategorias));
   saveAll(); render();
 }
-function editModalAddCat() {
-  const v = prompt("Nueva categoría:");
-  if (!v || !v.trim()) return;
-  const name = v.trim();
-  if (state.categorias.includes(name)) { alert("Ya existe esa categoría."); return; }
-  state.categorias = [...state.categorias, name];
-  state._editCat = name;
-  localStorage.setItem("cats_reordered_at", Date.now().toString());
-  saveAll(); render();
-}
-function editModalRenameCat() {
-  const current = state._editCat !== undefined ? state._editCat : (state.gastoEditando ? state.gastoEditando.categoria : "");
-  if (!current) { alert("Seleccioná una categoría primero."); return; }
-  const v = prompt("Renombrar categoría:", current);
-  if (!v || !v.trim() || v.trim() === current) return;
-  const newName = v.trim();
-  const enUso = state.gastos.filter(g => g.categoria === current).length;
-  if (enUso > 0) {
-    if (!confirm(`"${current}" está en ${enUso} gasto${enUso>1?"s":""}. Se actualizarán todos. ¿Continuar?`)) return;
-    state.gastos = state.gastos.map(g => g.categoria === current ? {...g, categoria: newName, updatedAt: Date.now()} : g);
-  }
-  state.categorias = state.categorias.map(c => c === current ? newName : c);
-  state._editCat = newName;
-  saveAll(); render();
-}
-function editModalDeleteCat() {
-  const current = state._editCat !== undefined ? state._editCat : (state.gastoEditando ? state.gastoEditando.categoria : "");
-  if (!current) { alert("Seleccioná una categoría primero."); return; }
-  const idx = state.categorias.indexOf(current);
-  if (idx === -1) return;
-  const enUso = state.gastos.filter(g => g.categoria === current).length;
-  const msg = enUso > 0
-    ? `"${current}" está en ${enUso} gasto${enUso>1?"s":""}. ¿Eliminar la categoría de todos modos?`
-    : `¿Eliminar la categoría "${current}"?`;
-  if (!confirm(msg)) return;
-  state.categorias = state.categorias.filter((_,j) => j !== idx);
-  state.deletedCategorias = [...new Set([...state.deletedCategorias, current])];
-  localStorage.setItem("deleted_cats_v1", JSON.stringify(state.deletedCategorias));
-  state._editCat = "";
-  saveAll(); render();
-}
 function editCat(i) {
   const oldName = state.categorias[i];
   const v = prompt("Renombrar categoría:", oldName);
   if (!v || !v.trim() || v.trim() === oldName) return;
   const newName = v.trim();
-  const enUso = state.gastos.filter(g => g.categoria === oldName).length;
+  const enUso = catsEnUso(oldName);
   if (enUso > 0) {
     if (!confirm(`"${oldName}" está en ${enUso} gasto${enUso>1?'s':''}. Se actualizarán todos. ¿Continuar?`)) return;
-    state.gastos = state.gastos.map(g => g.categoria === oldName ? {...g, categoria: newName, updatedAt: Date.now()} : g);
+    replaceCatInGastos(oldName, newName);
   }
   state.categorias = state.categorias.map((c,j) => j===i ? newName : c);
   saveAll(); render();
@@ -1632,10 +1623,15 @@ async function procesarIA() {
 }
 
 function setIAMedio(m){state._iaMedio=m;state._iaSubMedio=null;state._iaTcCuotas=undefined;state._iaCantCuotas=undefined;render();}
-function setIACat(v){state._iaCat=v;render();}
+function toggleCatIA(i){
+  const c = state.categorias[i];
+  const sel = state._iaCats!==undefined?state._iaCats:(state.iaResult&&state.iaResult.categoria?[state.iaResult.categoria]:[]);
+  state._iaCats = sel.includes(c) ? sel.filter(x=>x!==c) : [...sel, c];
+  render();
+}
 function setIASubMedio(s){state._iaSubMedio=s;render();}
 function cancelarIA(){
-  ["_iaDesc","_iaTitular","_iaMonto","_iaMoneda","_iaFecha","_iaMedio","_iaSubMedio","_iaCat","_iaNota","_iaTcCuotas","_iaCantCuotas"].forEach(k=>delete state[k]);
+  ["_iaDesc","_iaTitular","_iaMonto","_iaMoneda","_iaFecha","_iaMedio","_iaSubMedio","_iaCats","_iaNota","_iaTcCuotas","_iaCantCuotas"].forEach(k=>delete state[k]);
   setState({iaResult:null});
 }
 function confirmarIA() {
@@ -1648,7 +1644,7 @@ function confirmarIA() {
     moneda: state._iaMoneda!==undefined?state._iaMoneda:(r.moneda||"ARS"),
     fecha: state._iaFecha!==undefined?state._iaFecha:(r.fecha||hoy()),
     medio: medioStr(state._iaMedio!==undefined?state._iaMedio:r.medio, state._iaSubMedio!==undefined?state._iaSubMedio:r.subMedio)||"No especificado",
-    categoria: (state._iaCat!==undefined?state._iaCat:r.categoria)||"Otros",
+    categorias: (state._iaCats!==undefined?state._iaCats:(r.categoria?[r.categoria]:[]))||[],
     nota: state._iaNota!==undefined?state._iaNota:"Cargado via IA",
     cantCuotas:(()=>{const mIA=state._iaMedio!==undefined?state._iaMedio:(r.medio||null);const tcCuotasIA=state._iaTcCuotas!==undefined?state._iaTcCuotas:false;if(!esCuotasMode(mIA,tcCuotasIA))return null;const c=parseInt(state._iaCantCuotas);return c>0?c:null;})(),
     montoCuota:(()=>{const mIA=state._iaMedio!==undefined?state._iaMedio:(r.medio||null);const tcCuotasIA=state._iaTcCuotas!==undefined?state._iaTcCuotas:false;if(!esCuotasMode(mIA,tcCuotasIA))return null;const c=parseInt(state._iaCantCuotas);const mt=parseFloat(state._iaMonto!==undefined?state._iaMonto:r.monto);return(c>0&&mt>0)?Math.round(mt/c*100)/100:null;})(),
@@ -1666,7 +1662,7 @@ function confirmarIA() {
     showToast("✓ Gasto agregado");
   }
   saveAll();
-  ["_iaDesc","_iaTitular","_iaMonto","_iaMoneda","_iaFecha","_iaMedio","_iaSubMedio","_iaCat","_iaNota","_iaTcCuotas","_iaCantCuotas"].forEach(k=>delete state[k]);
+  ["_iaDesc","_iaTitular","_iaMonto","_iaMoneda","_iaFecha","_iaMedio","_iaSubMedio","_iaCats","_iaNota","_iaTcCuotas","_iaCantCuotas"].forEach(k=>delete state[k]);
   setState({iaResult:null,imgB64:null,imgPreview:null,textoLibre:""});
 }
 
@@ -1689,7 +1685,13 @@ function editarGasto(id) {
   else { console.warn("editarGasto: no se encontró id="+id, state.gastos.map(x=>x.id)); }
 }
 function clearEditState() {
-  ["_editDesc","_editTitular","_editMonto","_editMoneda","_editFecha","_editMedio","_editSubMedio","_editCat","_editNota","_editEmpresa","_editCantCuotas","_editTcCuotas"].forEach(k=>delete state[k]);
+  ["_editDesc","_editTitular","_editMonto","_editMoneda","_editFecha","_editMedio","_editSubMedio","_editCats","_editNota","_editEmpresa","_editCantCuotas","_editTcCuotas"].forEach(k=>delete state[k]);
+}
+function toggleCatEdit(i) {
+  const c = state.categorias[i];
+  const sel = state._editCats !== undefined ? state._editCats : getCats(state.gastoEditando||{});
+  state._editCats = sel.includes(c) ? sel.filter(x=>x!==c) : [...sel, c];
+  render();
 }
 function cerrarEditarGasto() { clearEditState(); setState({gastoEditando:null}); }
 function setEditEmpresa(e) { state._editEmpresa=e; render(); }
@@ -1741,7 +1743,7 @@ function guardarEdicion() {
     moneda: state._editMoneda!==undefined?state._editMoneda:(g.moneda||"ARS"),
     fecha: state._editFecha!==undefined?state._editFecha:g.fecha,
     medio: medioStr(m,sm)||g.medio||"No especificado",
-    categoria: (state._editCat!==undefined?state._editCat:g.categoria)||"Sin categoría",
+    categorias: (state._editCats!==undefined?state._editCats:getCats(g)).length ? (state._editCats!==undefined?state._editCats:getCats(g)) : ["Sin categoría"],
     nota: state._editNota!==undefined?state._editNota:(g.nota||""),
     cantCuotas:(()=>{const mE=state._editMedio!==undefined?state._editMedio:(g.medio||"").split(" · ")[0]||null;const tcCuotasEdit=state._editTcCuotas!==undefined?state._editTcCuotas:!!(g.cantCuotas&&esTCMedio(mE));if(!esCuotasMode(mE,tcCuotasEdit))return null;const c=parseInt(state._editCantCuotas!==undefined?state._editCantCuotas:g.cantCuotas);return c>0?c:null;})(),
     montoCuota:(()=>{const mE=state._editMedio!==undefined?state._editMedio:(g.medio||"").split(" · ")[0]||null;const tcCuotasEdit=state._editTcCuotas!==undefined?state._editTcCuotas:!!(g.cantCuotas&&esTCMedio(mE));if(!esCuotasMode(mE,tcCuotasEdit))return null;const c=parseInt(state._editCantCuotas!==undefined?state._editCantCuotas:g.cantCuotas);const mt=parseFloat(state._editMonto!==undefined?state._editMonto:g.monto);return(c>0&&mt>0)?Math.round(mt/c*100)/100:null;})(),
@@ -1807,7 +1809,7 @@ async function exportarExcel(soloEmp) {
   wb.creator = "Gastos App"; wb.created = new Date();
   const headers = ["Fecha","Empresa","Titular/Comercio","Descripción","Categoría","Medio de pago","Subtipo","Moneda","Monto Total","Cant. Cuotas","Monto/Cuota","Nota"];
   const splitMedio = g => { const p=(g.medio||"").split(" · "); return [p[0]||"",p[1]||""]; };
-  const toRow = g => [g.fecha, g.empresa, g.titular||"", g.desc, g.categoria||"", ...splitMedio(g), g.moneda||"ARS", g.monto, g.cantCuotas||"", g.montoCuota||"", g.nota||""];
+  const toRow = g => [g.fecha, g.empresa, g.titular||"", g.desc, getCats(g).join(", "), ...splitMedio(g), g.moneda||"ARS", g.monto, g.cantCuotas||"", g.montoCuota||"", g.nota||""];
 
   const descargar = async (nombre) => {
     const buf = await wb.xlsx.writeBuffer();
@@ -1850,10 +1852,10 @@ async function exportarBusqueda() {
   const splitMedio = g => { const p=(g.medio||"").split(" · "); return [p[0]||"",p[1]||""]; };
   const sorted = [...resultados].sort((a,b)=>new Date(a.fecha)-new Date(b.fecha));
   const headers = ["Fecha","Empresa","Titular/Comercio","Descripción","Categoría","Medio de pago","Subtipo","Moneda","Monto Total","Cant. Cuotas","Monto/Cuota","Nota"];
-  const rows = sorted.map(g=>[g.fecha, g.empresa, g.titular||"", g.desc, g.categoria||"", ...splitMedio(g), g.moneda||"ARS", g.monto, g.cantCuotas||"", g.montoCuota||"", g.nota||""]);
+  const rows = sorted.map(g=>[g.fecha, g.empresa, g.titular||"", g.desc, getCats(g).join(", "), ...splitMedio(g), g.moneda||"ARS", g.monto, g.cantCuotas||"", g.montoCuota||"", g.nota||""]);
   const wb = new ExcelJS.Workbook();
   wb.creator = "Gastos App"; wb.created = new Date();
-  const labelHoja = (state.busqueda||state.filtroBEmp||state.filtroBCat||"busqueda").replace(/[^a-zA-Z0-9 áéíóúñÁÉÍÓÚÑ]/g,"").trim().slice(0,28) || "Busqueda";
+  const labelHoja = (state.busqueda||state.filtroBEmp||(state.filtroBCats&&state.filtroBCats.join("+"))||"busqueda").replace(/[^a-zA-Z0-9 áéíóúñÁÉÍÓÚÑ+]/g,"").trim().slice(0,28) || "Busqueda";
   const ws = wb.addWorksheet(labelHoja);
   ws.addRow(headers); rows.forEach(r=>ws.addRow(r));
   aplicarEstilosHoja(ws, rows);
