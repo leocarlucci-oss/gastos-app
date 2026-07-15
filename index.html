@@ -115,6 +115,12 @@ const EMP = {
   AKC:   {bg:"rgba(234,179,8,.15)",   border:"#CA8A04",text:"#FDE047"},
 };
 
+// ── Modo viaje: defaults temporales hasta el 25/07/2026 ──────
+function enModoViaje(){ return hoy() <= "2026-07-25"; }
+function defaultMoneda(){ return enModoViaje() ? "Euros" : "ARS"; }
+function defaultMedio(){ return enModoViaje() ? "TC EUR" : null; }
+function defaultSplitParts(){ return enModoViaje() ? [{empresa:"CDM",pct:66},{empresa:"LCK",pct:34}] : [{empresa:null,pct:50},{empresa:null,pct:50}]; }
+
 // ── Estado global ─────────────────────────────────────────────
 let state = {
   tab: "cargar",
@@ -122,14 +128,14 @@ let state = {
   categorias: load("cats_v5", CATEGORIAS_DEFAULT),
   deletedCategorias: load("deleted_cats_v1", []),
   // form
-  empresa: null, desc:"", titular:"", monto:"", moneda:"ARS", fecha:hoy(),
-  medio:null, subMedio:null, categoriasSel:[], nota:"", cantCuotas:"", tcCuotas:false,
-  splitMode:false, splitParts:[{empresa:null,pct:50},{empresa:null,pct:50}],
+  empresa: null, desc:"", titular:"", monto:"", moneda:defaultMoneda(), fecha:hoy(),
+  medio:defaultMedio(), subMedio:null, categoriasSel:[], nota:"", cantCuotas:"", tcCuotas:false,
+  splitMode:false, splitParts:defaultSplitParts(),
   // ia
   empIA:null, textoLibre:"", iaLoading:false, iaResult:null,
   _iaTitular:undefined,
   imgB64:null, imgPreview:null,
-  iaSplitMode:false, iaSplitParts:[{empresa:null,pct:50},{empresa:null,pct:50}],
+  iaSplitMode:false, iaSplitParts:defaultSplitParts(),
   // voz
   vozActiva:false, vozStatus:"",
   // lista
@@ -891,9 +897,9 @@ function buildIA() {
     const r = state.iaResult;
     const eD = state._iaDesc!==undefined?state._iaDesc:(r.desc||"");
     const eM = state._iaMonto!==undefined?state._iaMonto:(r.monto||"");
-    const eMon = state._iaMoneda!==undefined?state._iaMoneda:(r.moneda||"ARS");
+    const eMon = state._iaMoneda!==undefined?state._iaMoneda:(r.moneda||defaultMoneda());
     const eF = state._iaFecha!==undefined?state._iaFecha:(r.fecha||hoy());
-    const eMed = state._iaMedio!==undefined?state._iaMedio:(r.medio||null);
+    const eMed = state._iaMedio!==undefined?state._iaMedio:(r.medio||defaultMedio());
     const eSub = state._iaSubMedio!==undefined?state._iaSubMedio:(r.subMedio||null);
     const eCats = state._iaCats!==undefined?state._iaCats:(r.categoria?[r.categoria]:[]);
     const eNot = state._iaNota!==undefined?state._iaNota:"";
@@ -1425,7 +1431,7 @@ function agregarGasto() {
     showToast("✓ Gasto agregado");
   }
   saveAll();
-  setState({desc:"",titular:"",monto:"",fecha:hoy(),nota:"",categoriasSel:[],medio:null,subMedio:null,empresa:null,moneda:"ARS",cantCuotas:"",tcCuotas:false,sugerencia:null});
+  setState({desc:"",titular:"",monto:"",fecha:hoy(),nota:"",categoriasSel:[],medio:defaultMedio(),subMedio:null,empresa:null,moneda:defaultMoneda(),cantCuotas:"",tcCuotas:false,sugerencia:null});
 }
 
 function eliminarGasto(id) {
@@ -1606,9 +1612,9 @@ function confirmarIA() {
     titular: (state._iaTitular!==undefined?state._iaTitular:(r.titular||"")),
     desc: (state._iaDesc!==undefined?state._iaDesc:r.desc)||"Sin descripción",
     monto: parseFloat(state._iaMonto!==undefined?state._iaMonto:r.monto)||0,
-    moneda: state._iaMoneda!==undefined?state._iaMoneda:(r.moneda||"ARS"),
+    moneda: state._iaMoneda!==undefined?state._iaMoneda:(r.moneda||defaultMoneda()),
     fecha: state._iaFecha!==undefined?state._iaFecha:(r.fecha||hoy()),
-    medio: medioStr(state._iaMedio!==undefined?state._iaMedio:r.medio, state._iaSubMedio!==undefined?state._iaSubMedio:r.subMedio)||"No especificado",
+    medio: medioStr(state._iaMedio!==undefined?state._iaMedio:(r.medio||defaultMedio()), state._iaSubMedio!==undefined?state._iaSubMedio:r.subMedio)||"No especificado",
     categorias: (state._iaCats!==undefined?state._iaCats:(r.categoria?[r.categoria]:[]))||[],
     nota: state._iaNota!==undefined?state._iaNota:"Cargado via IA",
     cantCuotas:(()=>{const mIA=state._iaMedio!==undefined?state._iaMedio:(r.medio||null);const tcCuotasIA=state._iaTcCuotas!==undefined?state._iaTcCuotas:false;if(!esCuotasMode(mIA,tcCuotasIA))return null;const c=parseInt(state._iaCantCuotas);return c>0?c:null;})(),
