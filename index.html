@@ -130,7 +130,7 @@ let state = {
   deletedCategorias: load("deleted_cats_v1", []),
   // form
   empresa: null, desc:"", titular:"", monto:"", moneda:defaultMoneda(), fecha:hoy(),
-  medio:defaultMedio(), subMedio:null, categoriasSel:[], nota:"", cantCuotas:"", tcCuotas:false, pagador:null, gbpMode:true, gbpRate: parseFloat(localStorage.getItem("gbp_rate"))||1.16,
+  medio:defaultMedio(), subMedio:null, categoriasSel:[], nota:"", cantCuotas:"", tcCuotas:false, pagador:null, gbpMode:true, gbpRate: (localStorage.getItem("gbp_rate_manual")?parseFloat(localStorage.getItem("gbp_rate")):0)||1.18,
   splitMode:false, splitParts:defaultSplitParts(),
   // ia
   empIA:null, textoLibre:"", iaLoading:false, iaResult:null,
@@ -1445,7 +1445,7 @@ function agregarGasto() {
   let _monto = parseFloat(state.monto);
   let _notaGbp = "";
   if (enModoGBP() && state.gbpMode && state.moneda==="Euros") {
-    const _r = parseFloat(state.gbpRate)||1.16;
+    const _r = parseFloat(state.gbpRate)||1.18;
     const _eur = Math.round(_monto*_r*100)/100;
     _notaGbp = `£${_monto} → €${_eur} (TC ${_r})`;
     _monto = _eur;
@@ -1658,7 +1658,7 @@ function confirmarIA() {
     updatedAt: Date.now(),
   };
   if (enModoGBP() && (state._iaGbp!==undefined?state._iaGbp:true) && base.moneda==="Euros" && base.monto>0) {
-    const _r = parseFloat(state.gbpRate)||1.16;
+    const _r = parseFloat(state.gbpRate)||1.18;
     const _eur = Math.round(base.monto*_r*100)/100;
     base.nota = (base.nota?base.nota+" · ":"") + `£${base.monto} → €${_eur} (TC ${_r})`;
     base.monto = _eur;
@@ -2109,12 +2109,6 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("/service-worker.js").catch(e => console.error("SW error:", e));
   });
-}
-if (enModoGBP() && !localStorage.getItem("gbp_rate_manual")) {
-  fetch("https://api.frankfurter.app/latest?from=GBP&to=EUR").then(r=>r.json()).then(d=>{
-    const rt = d && d.rates && d.rates.EUR;
-    if (rt) { state.gbpRate = rt; try{localStorage.setItem("gbp_rate", String(rt));}catch(e){} render(); }
-  }).catch(()=>{});
 }
 handleOAuthCallback();
 render();
