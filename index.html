@@ -122,7 +122,7 @@ function defaultMedio(){ return enModoViaje() ? "TC EUR" : null; }
 function defaultSplitParts(){ return enModoViaje() ? [{empresa:"CDM",pct:66},{empresa:"LCK",pct:34}] : [{empresa:null,pct:50},{empresa:null,pct:50}]; }
 function enModoGBP(){ return new Date() <= new Date("2026-07-23T14:00:00"); }
 function enModoCatEuropa(){ return new Date() <= new Date("2026-07-23T23:59:59"); }
-function defaultCategoriaSel(){ return enModoCatEuropa() ? ["europa jul26"] : []; }
+function defaultCategoriaSel(){ return enModoCatEuropa() ? ["EUROPA JUL26"] : []; }
 
 // ── Estado global ─────────────────────────────────────────────
 let state = {
