@@ -122,7 +122,8 @@ function defaultMedio(){ return enModoViaje() ? "TC EUR" : null; }
 function defaultSplitParts(){ return enModoViaje() ? [{empresa:"CDM",pct:66},{empresa:"LCK",pct:34}] : [{empresa:null,pct:50},{empresa:null,pct:50}]; }
 function enModoGBP(){ return new Date() <= new Date("2026-07-23T14:00:00"); }
 function enModoCatEuropa(){ return new Date() <= new Date("2026-07-23T23:59:59"); }
-function defaultCategoriaSel(){ return enModoCatEuropa() ? ["EUROPA JUL26"] : []; }
+function normCatName(s) { const t = String(s||"").trim(); return t ? t.charAt(0).toUpperCase() + t.slice(1).toLowerCase() : t; }
+function defaultCategoriaSel(){ return enModoCatEuropa() ? [normCatName("EUROPA JUL26")] : []; }
 
 // ── Estado global ─────────────────────────────────────────────
 let state = {
@@ -210,6 +211,32 @@ function migrarCatJetsmartTraslados() {
   } else {
     saveAll();
   }
+}
+
+// Migración one-off: estandariza el casing de todas las categorías (Primera mayúscula, resto minúscula)
+function normalizarCasingCategorias() {
+  const FLAG = "migrated_cat_casing_v1";
+  if (localStorage.getItem(FLAG)) return;
+  const nuevas = [];
+  const vistos = new Set();
+  let changed = false;
+  state.categorias.forEach(c => {
+    const n = normCatName(c);
+    if (c !== n) changed = true;
+    if (!vistos.has(n)) { vistos.add(n); nuevas.push(n); }
+  });
+  if (changed) {
+    state.categorias.forEach(c => {
+      const n = normCatName(c);
+      if (c !== n) replaceCatInGastos(c, n);
+    });
+    state.categorias = nuevas;
+    state.deletedCategorias = [...new Set(state.deletedCategorias.map(normCatName))];
+    localStorage.setItem("deleted_cats_v1", JSON.stringify(state.deletedCategorias));
+    saveAll();
+    render();
+  }
+  localStorage.setItem(FLAG, "1");
 }
 
 // ── Google Drive Sync ─────────────────────────────────────────
@@ -1540,7 +1567,7 @@ function confirmarPlantilla() {
 }
 
 // Categorías
-function addCat() { const v=document.getElementById("nueva-cat").value.trim(); if(!v||state.categorias.includes(v))return; state.categorias=[...state.categorias,v]; saveAll(); render(); }
+function addCat() { const v=normCatName(document.getElementById("nueva-cat").value.trim()); if(!v||state.categorias.includes(v))return; state.categorias=[...state.categorias,v]; saveAll(); render(); }
 function delCat(i) {
   const removed = state.categorias[i];
   if (!removed) return;
@@ -1558,7 +1585,7 @@ function editCat(i) {
   const oldName = state.categorias[i];
   const v = prompt("Renombrar categoría:", oldName);
   if (!v || !v.trim() || v.trim() === oldName) return;
-  const newName = v.trim();
+  const newName = normCatName(v.trim());
   const enUso = catsEnUso(oldName);
   if (enUso > 0) {
     if (!confirm(`"${oldName}" está en ${enUso} gasto${enUso>1?'s':''}. Se actualizarán todos. ¿Continuar?`)) return;
@@ -2142,7 +2169,7 @@ if ("serviceWorker" in navigator) {
 }
 handleOAuthCallback();
 render();
-if (driveEnabled()) { loadFromDrive().then(migrarCatJetsmartTraslados); } else { migrarCatJetsmartTraslados(); }
+if (driveEnabled()) { loadFromDrive().then(migrarCatJetsmartTraslados).then(normalizarCasingCategorias); } else { migrarCatJetsmartTraslados(); normalizarCasingCategorias(); }
 // Sync periódico cada 2 minutos si hay conexión activa con Drive
 setInterval(() => {
   if (driveEnabled() && state.syncStatus !== "syncing") loadFromDrive();
