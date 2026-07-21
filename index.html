@@ -213,16 +213,17 @@ function migrarCatJetsmartTraslados() {
   }
 }
 
-// Migración one-off: estandariza el casing de todas las categorías (Primera mayúscula, resto minúscula)
+// Migración one-off: estandariza el casing de todas las categorías (Primera mayúscula por palabra)
 function normalizarCasingCategorias() {
-  const FLAG = "migrated_cat_casing_v2";
+  const FLAG = "migrated_cat_casing_v3";
   if (localStorage.getItem(FLAG)) return;
   const nuevas = [];
   const vistos = new Set();
+  const viejosATombstone = [];
   let changed = false;
   state.categorias.forEach(c => {
     const n = normCatName(c);
-    if (c !== n) changed = true;
+    if (c !== n) { changed = true; viejosATombstone.push(c); }
     if (!vistos.has(n)) { vistos.add(n); nuevas.push(n); }
   });
   if (changed) {
@@ -231,7 +232,8 @@ function normalizarCasingCategorias() {
       if (c !== n) replaceCatInGastos(c, n);
     });
     state.categorias = nuevas;
-    state.deletedCategorias = [...new Set(state.deletedCategorias.map(normCatName))];
+    // Tombstone de los nombres viejos para que un sync con Drive no los vuelva a traer duplicados
+    state.deletedCategorias = [...new Set([...state.deletedCategorias, ...viejosATombstone])].filter(c => !nuevas.includes(c));
     localStorage.setItem("deleted_cats_v1", JSON.stringify(state.deletedCategorias));
     saveAll();
     render();
