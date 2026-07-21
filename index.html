@@ -121,6 +121,8 @@ function defaultMoneda(){ return enModoViaje() ? "Euros" : "ARS"; }
 function defaultMedio(){ return enModoViaje() ? "TC EUR" : null; }
 function defaultSplitParts(){ return enModoViaje() ? [{empresa:"CDM",pct:66},{empresa:"LCK",pct:34}] : [{empresa:null,pct:50},{empresa:null,pct:50}]; }
 function enModoGBP(){ return new Date() <= new Date("2026-07-23T14:00:00"); }
+function enModoCatEuropa(){ return new Date() <= new Date("2026-07-23T23:59:59"); }
+function defaultCategoriaSel(){ return enModoCatEuropa() ? ["europa jul26"] : []; }
 
 // ── Estado global ─────────────────────────────────────────────
 let state = {
@@ -130,7 +132,7 @@ let state = {
   deletedCategorias: load("deleted_cats_v1", []),
   // form
   empresa: null, desc:"", titular:"", monto:"", moneda:defaultMoneda(), fecha:hoy(), hora:horaAhora(),
-  medio:defaultMedio(), subMedio:null, categoriasSel:[], nota:"", cantCuotas:"", tcCuotas:false, pagador:null, gbpMode:true, gbpRate: (localStorage.getItem("gbp_rate_manual")?parseFloat(localStorage.getItem("gbp_rate")):0)||1.24,
+  medio:defaultMedio(), subMedio:null, categoriasSel:defaultCategoriaSel(), nota:"", cantCuotas:"", tcCuotas:false, pagador:null, gbpMode:true, gbpRate: (localStorage.getItem("gbp_rate_manual")?parseFloat(localStorage.getItem("gbp_rate")):0)||1.24,
   splitMode:false, splitParts:defaultSplitParts(),
   // ia
   empIA:null, textoLibre:"", iaLoading:false, iaResult:null,
@@ -930,7 +932,7 @@ function buildIA() {
     const eF = state._iaFecha!==undefined?state._iaFecha:(r.fecha||hoy());
     const eMed = state._iaMedio!==undefined?state._iaMedio:(r.medio||defaultMedio());
     const eSub = state._iaSubMedio!==undefined?state._iaSubMedio:(r.subMedio||null);
-    const eCats = state._iaCats!==undefined?state._iaCats:(r.categoria?[r.categoria]:[]);
+    const eCats = state._iaCats!==undefined?state._iaCats:(r.categoria?[r.categoria]:defaultCategoriaSel());
     const eNot = state._iaNota!==undefined?state._iaNota:"";
     const monOpts = ["ARS","U$S","Euros","CLP"].map(m=>`<option${eMon===m?" selected":""}>${m}</option>`).join("");
     resultHTML = `<div class="ia-result">
@@ -1486,7 +1488,7 @@ function agregarGasto() {
     showToast("✓ Gasto agregado");
   }
   saveAll();
-  setState({desc:"",titular:"",monto:"",fecha:hoy(),hora:horaAhora(),nota:"",categoriasSel:[],medio:defaultMedio(),subMedio:null,empresa:null,moneda:defaultMoneda(),cantCuotas:"",tcCuotas:false,pagador:null,sugerencia:null});
+  setState({desc:"",titular:"",monto:"",fecha:hoy(),hora:horaAhora(),nota:"",categoriasSel:defaultCategoriaSel(),medio:defaultMedio(),subMedio:null,empresa:null,moneda:defaultMoneda(),cantCuotas:"",tcCuotas:false,pagador:null,sugerencia:null});
 }
 
 function eliminarGasto(id) {
@@ -1651,7 +1653,7 @@ async function procesarIA() {
 function setIAMedio(m){state._iaMedio=m;state._iaSubMedio=null;state._iaTcCuotas=undefined;state._iaCantCuotas=undefined;render();}
 function toggleCatIA(i){
   const c = state.categorias[i];
-  const sel = state._iaCats!==undefined?state._iaCats:(state.iaResult&&state.iaResult.categoria?[state.iaResult.categoria]:[]);
+  const sel = state._iaCats!==undefined?state._iaCats:(state.iaResult&&state.iaResult.categoria?[state.iaResult.categoria]:defaultCategoriaSel());
   state._iaCats = sel.includes(c) ? sel.filter(x=>x!==c) : [...sel, c];
   render();
 }
@@ -1671,7 +1673,7 @@ function confirmarIA() {
     fecha: state._iaFecha!==undefined?state._iaFecha:(r.fecha||hoy()),
     hora: state._iaHora!==undefined?state._iaHora:horaAhora(),
     medio: medioStr(state._iaMedio!==undefined?state._iaMedio:(r.medio||defaultMedio()), state._iaSubMedio!==undefined?state._iaSubMedio:r.subMedio)||"No especificado",
-    categorias: (state._iaCats!==undefined?state._iaCats:(r.categoria?[r.categoria]:[]))||[],
+    categorias: (state._iaCats!==undefined?state._iaCats:(r.categoria?[r.categoria]:defaultCategoriaSel()))||["Sin categoría"],
     nota: state._iaNota!==undefined?state._iaNota:"Cargado via IA",
     pagador: state._iaPagador!==undefined?state._iaPagador:null,
     cantCuotas:(()=>{const mIA=state._iaMedio!==undefined?state._iaMedio:(r.medio||null);const tcCuotasIA=state._iaTcCuotas!==undefined?state._iaTcCuotas:false;if(!esCuotasMode(mIA,tcCuotasIA))return null;const c=parseInt(state._iaCantCuotas);return c>0?c:null;})(),
