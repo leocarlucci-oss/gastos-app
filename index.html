@@ -132,7 +132,7 @@ let state = {
   deletedCategorias: load("deleted_cats_v1", []),
   // form
   empresa: null, desc:"", titular:"", monto:"", moneda:defaultMoneda(), fecha:hoy(), hora:horaAhora(),
-  medio:defaultMedio(), subMedio:null, categoriasSel:defaultCategoriaSel(), nota:"", cantCuotas:"", tcCuotas:false, pagador:null, gbpMode:true, gbpRate: (localStorage.getItem("gbp_rate_manual")?parseFloat(localStorage.getItem("gbp_rate")):0)||1.24,
+  medio:defaultMedio(), subMedio:null, categoriasSel:defaultCategoriaSel(), nota:"", cantCuotas:"", tcCuotas:false, pagador:null, gbpMode:false, gbpRate: (localStorage.getItem("gbp_rate_manual")?parseFloat(localStorage.getItem("gbp_rate")):0)||1.24,
   splitMode:false, splitParts:defaultSplitParts(),
   // ia
   empIA:null, textoLibre:"", iaLoading:false, iaResult:null,
@@ -950,7 +950,7 @@ function buildIA() {
         <div><span class="label">Monto</span><input type="number" value="${eM}" oninput="state._iaMonto=this.value" step="0.01"></div>
         <div><span class="label">Moneda</span><select onchange="state._iaMoneda=this.value">${monOpts}</select></div>
       </div>
-      ${enModoGBP()&&eMon==="Euros"?`<div class="field" style="margin-top:-6px"><button onclick="setIAGbp()" style="padding:7px 12px;border-radius:8px;border:1px solid ${(state._iaGbp!==undefined?state._iaGbp:true)?"var(--accent)":"var(--border)"};background:${(state._iaGbp!==undefined?state._iaGbp:true)?"rgba(245,158,11,.12)":"transparent"};color:${(state._iaGbp!==undefined?state._iaGbp:true)?"var(--accent)":"var(--muted)"};font-size:12px;cursor:pointer">${(state._iaGbp!==undefined?state._iaGbp:true)?"✓ ":""}Monto en £ → guardar en € (TC ${state.gbpRate})</button></div>`:""}
+      ${enModoGBP()&&eMon==="Euros"?`<div class="field" style="margin-top:-6px"><button onclick="setIAGbp()" style="padding:7px 12px;border-radius:8px;border:1px solid ${(state._iaGbp!==undefined?state._iaGbp:false)?"var(--accent)":"var(--border)"};background:${(state._iaGbp!==undefined?state._iaGbp:false)?"rgba(245,158,11,.12)":"transparent"};color:${(state._iaGbp!==undefined?state._iaGbp:false)?"var(--accent)":"var(--muted)"};font-size:12px;cursor:pointer">${(state._iaGbp!==undefined?state._iaGbp:false)?"✓ ":""}Monto en £ → guardar en € (TC ${state.gbpRate})</button></div>`:""}
       <div class="row2 field"><div><span class="label">Fecha</span><input type="date" value="${eF}" onchange="state._iaFecha=this.value"></div><div><span class="label">Hora</span>${buildHoraSel(state._iaHora!==undefined?state._iaHora:horaAhora(),"setIAHora")}</div></div>
       <div class="field"><span class="label">Medio de pago</span>${buildMedioPicker(eMed,eSub,"setIAMedio","setIASubMedio")}</div>
       <div class="field"><span class="label">Pagado por <span style="color:var(--muted);font-weight:400;text-transform:none">(opcional)</span></span>${buildEmpGrid(state._iaPagador!==undefined?state._iaPagador:null,"setIAPagador")}</div>
@@ -1444,7 +1444,7 @@ function usarSugerencia() { setState({plantillaEnUso:state.sugerencia}); clearMo
 function gbpPreview() { if(!enModoGBP()||!state.gbpMode||state.moneda!=="Euros") return ""; const m=parseFloat(state.monto),r=parseFloat(state.gbpRate); return (m>0&&r>0)?`£${m} = € ${(Math.round(m*r*100)/100).toLocaleString("es-AR")}`:""; }
 function updateGbpPreview() { const el=document.getElementById("gbp-preview"); if(el) el.textContent=gbpPreview(); }
 function setGbpRate(v) { state.gbpRate=v; try{localStorage.setItem("gbp_rate",String(v));localStorage.setItem("gbp_rate_manual","1");}catch(e){} updateGbpPreview(); }
-function setIAGbp() { state._iaGbp = !(state._iaGbp!==undefined?state._iaGbp:true); render(); }
+function setIAGbp() { state._iaGbp = !(state._iaGbp!==undefined?state._iaGbp:false); render(); }
 function setPagador(e) { setState({pagador: state.pagador===e?null:e}); }
 function setIAPagador(e) { const cur=state._iaPagador!==undefined?state._iaPagador:null; state._iaPagador = cur===e?null:e; render(); }
 function setEditPagador(e) { const g=state.gastoEditando; const cur=state._editPagador!==undefined?state._editPagador:((g&&g.pagador)||null); state._editPagador = cur===e?null:e; render(); }
@@ -1680,7 +1680,7 @@ function confirmarIA() {
     montoCuota:(()=>{const mIA=state._iaMedio!==undefined?state._iaMedio:(r.medio||null);const tcCuotasIA=state._iaTcCuotas!==undefined?state._iaTcCuotas:false;if(!esCuotasMode(mIA,tcCuotasIA))return null;const c=parseInt(state._iaCantCuotas);const mt=parseFloat(state._iaMonto!==undefined?state._iaMonto:r.monto);return(c>0&&mt>0)?Math.round(mt/c*100)/100:null;})(),
     updatedAt: Date.now(),
   };
-  if (enModoGBP() && (state._iaGbp!==undefined?state._iaGbp:true) && base.moneda==="Euros" && base.monto>0) {
+  if (enModoGBP() && (state._iaGbp!==undefined?state._iaGbp:false) && base.moneda==="Euros" && base.monto>0) {
     const _r = parseFloat(state.gbpRate)||1.24;
     const _eur = Math.round(base.monto*_r*100)/100;
     base.nota = (base.nota?base.nota+" · ":"") + `£${base.monto} → €${_eur} (TC ${_r})`;
