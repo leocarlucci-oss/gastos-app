@@ -122,7 +122,7 @@ function defaultMedio(){ return enModoViaje() ? "TC EUR" : null; }
 function defaultSplitParts(){ return enModoViaje() ? [{empresa:"CDM",pct:66},{empresa:"LCK",pct:34}] : [{empresa:null,pct:50},{empresa:null,pct:50}]; }
 function enModoGBP(){ return new Date() <= new Date("2026-07-23T14:00:00"); }
 function enModoCatEuropa(){ return new Date() <= new Date("2026-07-23T23:59:59"); }
-function normCatName(s) { const t = String(s||"").trim(); return t ? t.charAt(0).toUpperCase() + t.slice(1).toLowerCase() : t; }
+function normCatName(s) { const t = String(s||"").trim(); return t ? t.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ") : t; }
 function defaultCategoriaSel(){ return enModoCatEuropa() ? [normCatName("EUROPA JUL26")] : []; }
 
 // ── Estado global ─────────────────────────────────────────────
@@ -215,7 +215,7 @@ function migrarCatJetsmartTraslados() {
 
 // Migración one-off: estandariza el casing de todas las categorías (Primera mayúscula, resto minúscula)
 function normalizarCasingCategorias() {
-  const FLAG = "migrated_cat_casing_v1";
+  const FLAG = "migrated_cat_casing_v2";
   if (localStorage.getItem(FLAG)) return;
   const nuevas = [];
   const vistos = new Set();
