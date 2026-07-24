@@ -102,7 +102,7 @@ const MEDIOS = {
   MP:       {color:"#60A5FA",sub:["MP LC","MP C2","MP AK"]},
   PayPal:   {color:"#003087",sub:[]},
   Bizum:    {color:"#00CFFF",sub:[]},
-  Zelle:    {color:"#6D1ED4",sub:["Chase Leandro","Citibank Leandro","Carbugia FL","Carbugia DW","Nafyl FL","Nafyl DW"]},
+  "Tx U$S Zelle": {color:"#6D1ED4",sub:["Chase Leandro","Citibank Leandro","Carbugia FL","Carbugia DW","Nafyl FL","Nafyl DW"]},
   "E-cheque":{color:"#10B981",sub:["Santander BW","Santander NF","Santander LC","Galicia C2","Galicia BW","Galicia LC","Supervielle C2","Supervielle LC","BBVA AK","BBVA LC","CIU AK","CIU BW","CIU NF","Macro LC"]},
 };
 
@@ -1655,7 +1655,7 @@ async function procesarIA() {
       ? ` Para el campo titular: si el comercio/proveedor que encontrás coincide o es muy similar a alguno de esta lista, usá exactamente ese nombre: [${titularesConocidos.join(", ")}]. Si no coincide con ninguno, usá el nombre tal como aparece.`
       : "";
     const subMediosHint = Object.entries(MEDIOS).map(([k,v])=>v.sub&&v.sub.length?`${k}: [${v.sub.join(", ")}]`:"").filter(Boolean).join("; ");
-    const prompt = `Hoy es ${hoy()}. ` + (state.textoLibre?`Texto: "${state.textoLibre}". `:"") + `Extraé: titular (nombre del comercio/proveedor), desc (concepto del gasto), monto (número), moneda (ARS/U$S/Euros/CLP), fecha (YYYY-MM-DD o null, si no tiene año usá el año de hoy), medio (Tx/TC ARS/TC U$S/TC EUR/Cash/MP/PayPal/Bizum/Zelle), subMedio (null o el nombre exacto de la tarjeta/sub según esta lista — ${subMediosHint}), categoria (una de: ${state.categorias.join("/")}).${titularesHint} Solo JSON sin backticks.`;
+    const prompt = `Hoy es ${hoy()}. ` + (state.textoLibre?`Texto: "${state.textoLibre}". `:"") + `Extraé: titular (nombre del comercio/proveedor), desc (concepto del gasto), monto (número), moneda (ARS/U$S/Euros/CLP), fecha (YYYY-MM-DD o null, si no tiene año usá el año de hoy), medio (Tx/TC ARS/TC U$S/TC EUR/Cash/MP/PayPal/Bizum/Tx U$S Zelle), subMedio (null o el nombre exacto de la tarjeta/sub según esta lista — ${subMediosHint}), categoria (una de: ${state.categorias.join("/")}).${titularesHint} Solo JSON sin backticks.`;
     let messages;
     if(state.imgB64) {
       messages=[{role:"user",content:[{type:"image",source:{type:"base64",media_type:state.imgMime||"image/jpeg",data:state.imgB64}},{type:"text",text:prompt}]}];
