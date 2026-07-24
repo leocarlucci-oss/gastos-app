@@ -1493,6 +1493,7 @@ function agregarGasto() {
   const desc = state.desc.trim();
   if(!desc) return showToast("⚠ Escribí una descripción");
   if(!state.monto||parseFloat(state.monto)<=0) return showToast("⚠ Ingresá un monto válido");
+  if(MEDIOS[state.medio] && (MEDIOS[state.medio].sub||[]).length && !state.subMedio) return showToast("⚠ Elegí el sub-medio (banco) de "+state.medio);
   let _monto = parseFloat(state.monto);
   let _notaGbp = "";
   if (enModoGBP() && state.gbpMode && state.moneda==="Euros") {
@@ -1694,6 +1695,9 @@ function cancelarIA(){
 function confirmarIA() {
   const r = state.iaResult;
   if(!r) return;
+  const _iaMed = state._iaMedio!==undefined?state._iaMedio:(r.medio||defaultMedio());
+  const _iaSub = state._iaSubMedio!==undefined?state._iaSubMedio:r.subMedio;
+  if(MEDIOS[_iaMed] && (MEDIOS[_iaMed].sub||[]).length && !_iaSub) return showToast("⚠ Elegí el sub-medio (banco) de "+_iaMed);
   const base = {
     titular: (state._iaTitular!==undefined?state._iaTitular:(r.titular||"")),
     desc: (state._iaDesc!==undefined?state._iaDesc:r.desc)||"Sin descripción",
