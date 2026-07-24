@@ -1051,7 +1051,7 @@ function buildLista() {
 }
 
 function buildBuscar() {
-  const mediosDisp = Object.keys(MEDIOS).sort((a,b)=>a.localeCompare(b));
+  const mediosDisp = [...new Set(state.gastos.map(g=>g.medio).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
   const hayActivos = !!(state.busqueda||state.filtroBEmp||(state.filtroBCats&&state.filtroBCats.length)||state.filtroBMedio||state.filtroBPagador||state.filtroDesde||state.filtroHasta);
 
   const inputStyle = "width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--fg);font-size:13px;box-sizing:border-box;outline:none";
