@@ -2053,14 +2053,14 @@ async function handleImportExcel(input) {
       return;
     }
 
-    const msg = `¿Importar ${nuevos.length} gasto${nuevos.length!==1?"s":""}?` + (errores.length ? `\n\n${errores.length} fila${errores.length!==1?"s":""} se van a omitir por datos inválidos (detalle en la consola).` : "");
+    const _sig=x=>(x.empresa||"")+"|"+(x.fecha||"")+"|"+Math.round((parseFloat(x.monto)||0)*100)+"|"+(x.medio||""); const _ex=new Set(state.gastos.map(_sig)); const _add=nuevos.filter(x=>!_ex.has(_sig(x))); const _dups=nuevos.length-_add.length; if(!_add.length){ showToast("⚠ Todo ya estaba cargado ("+_dups+" duplicado"+(_dups!==1?"s":"")+")"); return; } const msg = `¿Importar ${_add.length} gasto${_add.length!==1?"s":""}${_dups?` · ${_dups} ya cargado${_dups!==1?"s":""} (omitido${_dups!==1?"s":""})`:""}?` + (errores.length ? `\n\n${errores.length} fila${errores.length!==1?"s":""} se van a omitir por datos inválidos (detalle en la consola).` : "");
     if (!confirm(msg)) return;
 
-    state.gastos = [...state.gastos, ...nuevos];
+    state.gastos = [...state.gastos, ..._add];
     saveAll();
     render();
     if (errores.length) console.warn("Filas omitidas en la importación:", errores);
-    showToast(`✓ ${nuevos.length} gastos importados${errores.length?` (${errores.length} omitidos)`:""}`);
+    showToast(`✓ ${_add.length} gastos importados${_dups?` · ${_dups} duplicado${_dups!==1?"s":""} omitido${_dups!==1?"s":""}`:""}${errores.length?` (${errores.length} omitidos)`:""}`);
   } catch(e) {
     console.error("Error importando Excel:", e);
     showToast("⚠ Error leyendo el archivo: " + e.message);
