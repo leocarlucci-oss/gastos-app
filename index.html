@@ -2288,7 +2288,20 @@ async function handleImportExcel(input) {
       return;
     }
 
-    const _sig=x=>(x.empresa||"")+"|"+(x.fecha||"")+"|"+Math.round((parseFloat(x.monto)||0)*100)+"|"+(x.medio||""); const _ex=new Set(state.gastos.map(_sig)); const _add=nuevos.filter(x=>!_ex.has(_sig(x))); const _dups=nuevos.length-_add.length; if(!_add.length){ showToast("⚠ Todo ya estaba cargado ("+_dups+" duplicado"+(_dups!==1?"s":"")+")"); return; } const msg = `¿Importar ${_add.length} gasto${_add.length!==1?"s":""}${_dups?` · ${_dups} ya cargado${_dups!==1?"s":""} (omitido${_dups!==1?"s":""})`:""}?` + (errores.length ? `\n\n${errores.length} fila${errores.length!==1?"s":""} se van a omitir por datos inválidos (detalle en la consola).` : "");
+    const _sig=x=>(x.empresa||"")+"|"+(x.fecha||"")+"|"+Math.round((parseFloat(x.monto)||0)*100)+"|"+(x.medio||"");
+    const _ex=new Map(); state.gastos.forEach(g=>{ if(!_ex.has(_sig(g))) _ex.set(_sig(g), g); });
+    const _add=[], _dupPares=[];
+    nuevos.forEach(x => { const y=_ex.get(_sig(x)); if (y) _dupPares.push({nuevo:x, existente:y}); else _add.push(x); });
+    const _dups=_dupPares.length;
+    // Detalle de los omitidos, para poder identificarlos sin adivinar
+    const _detalleDup = _dupPares.map(({nuevo,existente}) =>
+      `• ${nuevo.fecha} · ${nuevo.empresa} · ${fmtMonto(nuevo.monto, nuevo.moneda)} · ${nuevo.titular||nuevo.desc}`
+      + `\n   ya existe como: "${existente.titular||existente.desc}"${existente.nota?` (${existente.nota})`:""}`);
+    if (_dups) console.warn("Gastos omitidos por duplicado:", _dupPares);
+    if(!_add.length){ alert(`Todo ya estaba cargado (${_dups} duplicado${_dups!==1?"s":""}):\n\n${_detalleDup.join("\n")}`); return; }
+    const msg = `¿Importar ${_add.length} gasto${_add.length!==1?"s":""}${_dups?` · ${_dups} ya cargado${_dups!==1?"s":""} (omitido${_dups!==1?"s":""})`:""}?`
+      + (_dups ? `\n\nOmitido${_dups!==1?"s":""} por estar ya cargado${_dups!==1?"s":""}:\n${_detalleDup.slice(0,10).join("\n")}${_dups>10?`\n… y ${_dups-10} más (ver consola)`:""}` : "")
+      + (errores.length ? `\n\n${errores.length} fila${errores.length!==1?"s":""} se van a omitir por datos inválidos (detalle en la consola).` : "");
     if (!confirm(msg)) return;
 
     state.gastos = [...state.gastos, ..._add];
