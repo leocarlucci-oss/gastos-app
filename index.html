@@ -146,7 +146,7 @@ let state = {
   vozActiva:false, vozStatus:"",
   // lista
   filtro:"Todos",
-  busqueda:"", filtroBEmp:"", filtroBCats:[], filtroBMedio:"", filtroBPagador:"", filtroDesde:"", filtroHasta:"",
+  busqueda:"", filtroBEmp:"", filtroBCats:[], filtroBCatsExcl:[], filtroBMedio:"", filtroBPagador:"", filtroDesde:"", filtroHasta:"",
   exportDesde:"", exportHasta:"",
   // modales
   showCats:false, plantillaEnUso:null, sugerencia:null, gastoViendo:null, listPage:1,
@@ -1108,7 +1108,7 @@ function buildLista() {
 
 function buildBuscar() {
   const mediosDisp = [...new Set(state.gastos.map(g=>g.medio).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
-  const hayActivos = !!(state.busqueda||state.filtroBEmp||(state.filtroBCats&&state.filtroBCats.length)||state.filtroBMedio||state.filtroBPagador||state.filtroDesde||state.filtroHasta);
+  const hayActivos = !!(state.busqueda||state.filtroBEmp||(state.filtroBCats&&state.filtroBCats.length)||(state.filtroBCatsExcl&&state.filtroBCatsExcl.length)||state.filtroBMedio||state.filtroBPagador||state.filtroDesde||state.filtroHasta);
 
   const inputStyle = "width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--fg);font-size:13px;box-sizing:border-box;outline:none";
 
@@ -1127,8 +1127,8 @@ function buildBuscar() {
       </select>
     </div>
     <div class="field" style="margin-bottom:10px">
-      <span class="label">Categoría ${(state.filtroBCats&&state.filtroBCats.length>1)?'<span style="color:var(--muted);font-weight:400">(deben tener todas)</span>':''}</span>
-      ${buildCatMultiPicker(state.filtroBCats,"toggleFiltroCat")}
+      <span class="label">Categoría <span style="color:var(--muted);font-weight:400">${(state.filtroBCats&&state.filtroBCats.length>1)?'(deben tener todas) · ':''}1 toque incluye, 2 excluye</span></span>
+      ${buildCatFilterPicker()}
     </div>
     <div class="field" style="margin-bottom:10px">
       <span class="label">Medio de pago</span>
@@ -1466,7 +1466,7 @@ function buildBuscarResultsHTML() {
 }
 function busquedaInput(val) {
   state.busqueda = val;
-  const hayActivos = !!(state.busqueda||state.filtroBEmp||(state.filtroBCats&&state.filtroBCats.length)||state.filtroBMedio||state.filtroBPagador||state.filtroDesde||state.filtroHasta);
+  const hayActivos = !!(state.busqueda||state.filtroBEmp||(state.filtroBCats&&state.filtroBCats.length)||(state.filtroBCatsExcl&&state.filtroBCatsExcl.length)||state.filtroBMedio||state.filtroBPagador||state.filtroDesde||state.filtroHasta);
   const limpiarEl = document.getElementById("buscar-limpiar-wrap");
   if (limpiarEl) limpiarEl.innerHTML = hayActivos
     ? '<button onclick="limpiarFiltrosBusqueda()" style="padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:12px;cursor:pointer;white-space:nowrap">✕ Limpiar</button>'
@@ -1474,25 +1474,31 @@ function busquedaInput(val) {
   const el = document.getElementById("buscar-results");
   if (el) el.innerHTML = buildBuscarResultsHTML();
 }
+// Ciclo de 3 estados: neutro -> incluir -> excluir -> neutro
 function toggleFiltroCat(i) {
   const c = state.categorias[i];
-  const sel = state.filtroBCats || [];
-  setState({filtroBCats: sel.includes(c) ? sel.filter(x=>x!==c) : [...sel, c]});
+  if (!c) return;
+  const inc = state.filtroBCats || [], exc = state.filtroBCatsExcl || [];
+  if (inc.includes(c))      setState({filtroBCats: inc.filter(x=>x!==c), filtroBCatsExcl: [...exc, c]});
+  else if (exc.includes(c)) setState({filtroBCatsExcl: exc.filter(x=>x!==c)});
+  else                      setState({filtroBCats: [...inc, c]});
 }
 function getFiltradosBusqueda() {
   const q = (state.busqueda||"").toLowerCase().trim();
   const emp = state.filtroBEmp||"";
   const cats = state.filtroBCats||[];
+  const catsExcl = state.filtroBCatsExcl||[];
   const med = state.filtroBMedio||"";
   const pag = state.filtroBPagador||"";
   const desde = state.filtroDesde||"";
   const hasta = state.filtroHasta||"";
-  const hayFiltro = q||emp||cats.length||med||pag||desde||hasta;
+  const hayFiltro = q||emp||cats.length||catsExcl.length||med||pag||desde||hasta;
   if(!hayFiltro) return null;
   return [...state.gastos].filter(g=>{
     if(q && !((g.titular||"").toLowerCase().includes(q)||(g.desc||"").toLowerCase().includes(q)||(g.nota||"").toLowerCase().includes(q))) return false;
     if(emp && g.empresa!==emp) return false;
     if(cats.length) { const gc=getCats(g); if(!cats.every(c=>gc.includes(c))) return false; }
+    if(catsExcl.length) { const gc=getCats(g); if(gc.some(c=>catsExcl.includes(c))) return false; }
     if(med && !(g.medio||"").startsWith(med)) return false;
     if(pag && g.pagador!==pag) return false;
     if(desde && g.fecha<desde) return false;
@@ -1564,7 +1570,7 @@ function filtroFechaInput(campo, val) {
   refrescarBusqueda();
 }
 function refrescarBusqueda() {
-  const hayActivos = !!(state.busqueda||state.filtroBEmp||(state.filtroBCats&&state.filtroBCats.length)||state.filtroBMedio||state.filtroBPagador||state.filtroDesde||state.filtroHasta);
+  const hayActivos = !!(state.busqueda||state.filtroBEmp||(state.filtroBCats&&state.filtroBCats.length)||(state.filtroBCatsExcl&&state.filtroBCatsExcl.length)||state.filtroBMedio||state.filtroBPagador||state.filtroDesde||state.filtroHasta);
   const limpiarEl = document.getElementById("buscar-limpiar-wrap");
   if (limpiarEl) limpiarEl.innerHTML = hayActivos
     ? '<button onclick="limpiarFiltrosBusqueda()" style="padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:12px;cursor:pointer;white-space:nowrap">✕ Limpiar</button>'
@@ -1603,8 +1609,27 @@ function exportFechaInput(campo, val) {
   if (btn) btn.textContent = `⬇ Exportar a Excel${hay?` (${n} gastos en rango)`:""}`;
 }
 
+// Picker de 3 estados solo para Buscar: incluir (✓), excluir (✕) o neutro
+function buildCatFilterPicker() {
+  const inc = state.filtroBCats||[], exc = state.filtroBCatsExcl||[];
+  const {proyectos, tipos} = catsPorEje();
+  const btn = ({cat,idx}) => {
+    const esInc = inc.includes(cat), esExc = exc.includes(cat);
+    const col = esInc ? "var(--accent)" : esExc ? "#EF4444" : "var(--muted)";
+    const bg  = esInc ? "rgba(245,158,11,.12)" : esExc ? "rgba(239,68,68,.12)" : "transparent";
+    const bd  = esInc ? "var(--accent)" : esExc ? "#EF4444" : "var(--border)";
+    const pre = esInc ? "✓ " : esExc ? "✕ " : "";
+    const dec = esExc ? "line-through" : "none";
+    return `<button onclick="toggleFiltroCat(${idx})" title="${esInc?"Incluida — tocá para excluir":esExc?"Excluida — tocá para quitar el filtro":"Tocá para incluir"}" style="padding:8px 6px;border-radius:8px;border:2px solid ${bd};background:${bg};color:${col};font-size:12px;font-weight:${esInc||esExc?600:400};text-decoration:${dec};cursor:pointer">${pre}${esc(cat)}</button>`;
+  };
+  const grid = arr => `<div class="emp-grid" style="grid-template-columns:repeat(auto-fill,minmax(88px,1fr))">${arr.map(btn).join("")}</div>`;
+  if (!proyectos.length) return grid(tipos);
+  const lbl = t => `<div style="font-size:9px;font-family:monospace;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:2px 0 4px">${t}</div>`;
+  return `${lbl("◈ Proyecto / Viaje")}${grid(proyectos)}${tipos.length?`${lbl("Tipo de gasto")}${grid(tipos)}`:""}`;
+}
+
 function limpiarFiltrosBusqueda() {
-  setState({busqueda:"",filtroBEmp:"",filtroBCats:[],filtroBMedio:"",filtroBPagador:"",filtroDesde:"",filtroHasta:""});
+  setState({busqueda:"",filtroBEmp:"",filtroBCats:[],filtroBCatsExcl:[],filtroBMedio:"",filtroBPagador:"",filtroDesde:"",filtroHasta:""});
 }
 function cargarMasGastos() { setState({listPage: state.listPage + 1}); }
 function setEmpresa(e) { setState({empresa:e}); }
