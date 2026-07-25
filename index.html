@@ -1450,10 +1450,13 @@ function buildBuscarResultsHTML() {
     ? `<div style="font-size:12px;color:var(--muted);margin-bottom:10px">${resultados.length} resultado${resultados.length!==1?"s":""}</div>`
     : "";
   const exportBtn = hayFiltro && resultados.length > 0
-    ? `<button onclick="exportarBusqueda()" style="width:100%;padding:10px;background:linear-gradient(135deg,#065F46,#059669);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:12px;cursor:pointer">⬇ Exportar resultados a Excel (${resultados.length})</button>`
+    ? `<button onclick="exportarBusqueda()" style="width:100%;padding:10px;background:linear-gradient(135deg,#065F46,#059669);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:8px;cursor:pointer">⬇ Exportar resultados a Excel (${resultados.length})</button>`
+    : "";
+  const bulkBtn = hayFiltro && resultados.length > 0
+    ? `<button onclick="agregarCatAResultados()" style="width:100%;padding:10px;background:var(--surface);color:var(--accent);border:1px solid var(--accent)55;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:12px;cursor:pointer">🏷 Agregar categoría a los ${resultados.length} resultados</button>`
     : "";
   const totalHTML = hayFiltro ? calcularTotalesBusqueda(resultados) : "";
-  return totalHTML + countMsg + exportBtn + items;
+  return totalHTML + countMsg + exportBtn + bulkBtn + items;
 }
 function busquedaInput(val) {
   state.busqueda = val;
@@ -1490,6 +1493,44 @@ function getFiltradosBusqueda() {
     if(hasta && g.fecha>hasta) return false;
     return true;
   }).sort(cmpGastoDesc);
+}
+
+function agregarCatAResultados() {
+  const resultados = getFiltradosBusqueda();
+  if (!resultados || !resultados.length) return;
+  const v = prompt(`Categoría a agregar a los ${resultados.length} gastos filtrados:`);
+  if (!v || !v.trim()) return;
+  const cat = normCatName(v.trim());
+  if (!cat || cat.toLowerCase() === "sin categoría") return;
+
+  const ids = new Set(resultados.map(g => String(g.id)));
+  const yaLaTienen = resultados.filter(g => getCats(g).includes(cat)).length;
+  const aModificar = resultados.length - yaLaTienen;
+  if (!aModificar) return showToast(`Los ${resultados.length} gastos ya tienen "${cat}"`);
+
+  const esNueva = !state.categorias.includes(cat);
+  const msg = `Se va a agregar "${cat}" a ${aModificar} gasto${aModificar!==1?"s":""}`
+    + (yaLaTienen ? ` (${yaLaTienen} ya la ${yaLaTienen!==1?"tienen":"tiene"})` : "")
+    + (esNueva ? `.\n\n"${cat}" no existe todavía: se va a crear como categoría nueva.` : ".")
+    + `\n\n¿Continuar?`;
+  if (!confirm(msg)) return;
+
+  state.gastos = state.gastos.map(g => {
+    if (!ids.has(String(g.id))) return g;
+    const cats = getCats(g);
+    if (cats.includes(cat)) return g;
+    // Si solo tenía el placeholder, lo reemplazamos en vez de acumularlo
+    const base = cats.filter(c => c !== "Sin categoría");
+    return {...g, categorias: [...base, cat], updatedAt: Date.now()};
+  });
+
+  if (esNueva) {
+    state.categorias = [...state.categorias, cat];
+    state.deletedCategorias = (state.deletedCategorias||[]).filter(c => c !== cat);
+    localStorage.setItem("deleted_cats_v1", JSON.stringify(state.deletedCategorias));
+  }
+  saveAll(); render();
+  showToast(`✓ "${cat}" agregada a ${aModificar} gasto${aModificar!==1?"s":""}`);
 }
 
 function limpiarFiltrosBusqueda() {
