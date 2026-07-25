@@ -21,6 +21,22 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 input,select,textarea,button{font-family:inherit;}
 input,select,textarea{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;padding:10px 12px;outline:none;}
 input:focus,select:focus,textarea:focus{border-color:var(--accent);}
+/* El icono nativo del calendario viene oscuro y no se ve sobre el fondo oscuro */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator{
+  filter:invert(1);opacity:.55;cursor:pointer;padding:3px;margin-left:2px;border-radius:4px;
+  transition:opacity .15s ease,background .15s ease;
+}
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="time"]::-webkit-calendar-picker-indicator:hover{opacity:1;background:rgba(245,158,11,.2);}
+input[type="date"]:focus::-webkit-calendar-picker-indicator,
+input[type="time"]:focus::-webkit-calendar-picker-indicator{opacity:1;}
+/* Firefox y los segmentos vacios de la fecha */
+input[type="date"]::-webkit-datetime-edit-text,
+input[type="date"]::-webkit-datetime-edit-month-field,
+input[type="date"]::-webkit-datetime-edit-day-field,
+input[type="date"]::-webkit-datetime-edit-year-field{color:var(--text);}
+input[type="date"]:invalid::-webkit-datetime-edit{color:var(--muted);}
 select option{background:#1a1a20;}
 textarea{resize:vertical;}
 button{cursor:pointer;}
