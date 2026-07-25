@@ -1147,12 +1147,17 @@ function buildBuscar() {
     <div class="row2" style="margin-bottom:14px">
       <div class="field" style="margin:0">
         <span class="label">Fecha desde</span>
-        <input type="date" value="${state.filtroDesde}" onchange="setState({filtroDesde:this.value})" style="${inputStyle}">
+        <input type="date" id="filtro-desde" value="${state.filtroDesde}" onchange="filtroFechaInput('filtroDesde',this.value)" style="${inputStyle}">
       </div>
       <div class="field" style="margin:0">
         <span class="label">Fecha hasta</span>
-        <input type="date" value="${state.filtroHasta}" onchange="setState({filtroHasta:this.value})" style="${inputStyle}">
+        <input type="date" id="filtro-hasta" value="${state.filtroHasta}" onchange="filtroFechaInput('filtroHasta',this.value)" style="${inputStyle}">
       </div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin:-8px 0 14px">
+      ${[["Hoy",()=>"rangoRelativo(1)"],["7 días",()=>"rangoRelativo(7)"],["30 días",()=>"rangoRelativo(30)"],["Este mes",()=>"rangoMes(0)"],["Mes pasado",()=>"rangoMes(-1)"]]
+        .map(([lbl,fn])=>`<button onclick="${fn()}" style="padding:5px 10px;border-radius:14px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:11px;cursor:pointer">${lbl}</button>`).join("")}
+      ${(state.filtroDesde||state.filtroHasta)?`<button onclick="setRangoBusqueda('','')" style="padding:5px 10px;border-radius:14px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:11px;cursor:pointer">✕ fechas</button>`:""}
     </div>
     <div id="buscar-results">${buildBuscarResultsHTML()}</div>
   </div>`;
@@ -1201,16 +1206,16 @@ function buildResumen() {
       <div class="row2">
         <div class="field" style="margin:0">
           <span class="label">Desde</span>
-          <input type="date" value="${state.exportDesde}" onchange="setState({exportDesde:this.value})" style="${inputStyleR}">
+          <input type="date" value="${state.exportDesde}" onchange="exportFechaInput('exportDesde',this.value)" style="${inputStyleR}">
         </div>
         <div class="field" style="margin:0">
           <span class="label">Hasta</span>
-          <input type="date" value="${state.exportHasta}" onchange="setState({exportHasta:this.value})" style="${inputStyleR}">
+          <input type="date" value="${state.exportHasta}" onchange="exportFechaInput('exportHasta',this.value)" style="${inputStyleR}">
         </div>
       </div>
       ${hayFiltroFecha?`<button onclick="setState({exportDesde:'',exportHasta:''})" style="margin-top:8px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:12px;cursor:pointer">✕ Quitar filtro de fecha</button>`:""}
     </div>
-    <button onclick="exportarExcel()" style="width:100%;padding:13px;background:linear-gradient(135deg,#065F46,#059669);color:white;border:none;border-radius:8px;font-size:14px;font-weight:600">⬇ Exportar a Excel${labelFecha}</button>
+    <button onclick="exportarExcel()" style="width:100%;padding:13px;background:linear-gradient(135deg,#065F46,#059669);color:white;border:none;border-radius:8px;font-size:14px;font-weight:600" id="btn-export-todo">⬇ Exportar a Excel${labelFecha}</button>
     <div style="border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:16px">
       <div style="font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:600">Importar desde Excel</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Se agregan como gastos nuevos; no reemplaza ni actualiza los existentes. La plantilla trae 3 columnas de categoría (podés dejar las que no uses vacías, o agregar "Categoría 4", "5"... si necesitás más).</div>
@@ -1549,6 +1554,53 @@ function eliminarResultados() {
   state.deletedIds = [...new Set([...(state.deletedIds||[]), ...resultados.map(g=>g.id)])];
   saveAll(); render();
   showToast(`✓ ${n} gasto${n!==1?"s":""} eliminado${n!==1?"s":""}`);
+}
+
+// Los inputs de fecha no pueden disparar un render completo: mientras se tipea el año
+// el valor queda momentáneamente inválido, se dispara "change", el input se recrea y
+// se pierde el foco. Actualizamos el estado y parcheamos solo los resultados.
+function filtroFechaInput(campo, val) {
+  state[campo] = val;
+  refrescarBusqueda();
+}
+function refrescarBusqueda() {
+  const hayActivos = !!(state.busqueda||state.filtroBEmp||(state.filtroBCats&&state.filtroBCats.length)||state.filtroBMedio||state.filtroBPagador||state.filtroDesde||state.filtroHasta);
+  const limpiarEl = document.getElementById("buscar-limpiar-wrap");
+  if (limpiarEl) limpiarEl.innerHTML = hayActivos
+    ? '<button onclick="limpiarFiltrosBusqueda()" style="padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:12px;cursor:pointer;white-space:nowrap">✕ Limpiar</button>'
+    : '';
+  const el = document.getElementById("buscar-results");
+  if (el) el.innerHTML = buildBuscarResultsHTML();
+}
+// Atajos de rango: evitan tener que tipear la fecha a mano
+function setRangoBusqueda(desde, hasta) {
+  state.filtroDesde = desde; state.filtroHasta = hasta;
+  const dEl = document.getElementById("filtro-desde"); if (dEl) dEl.value = desde;
+  const hEl = document.getElementById("filtro-hasta"); if (hEl) hEl.value = hasta;
+  refrescarBusqueda();
+}
+function rangoRelativo(dias) {
+  const h = new Date();
+  const d = new Date(); d.setDate(d.getDate()-dias+1);
+  const f = x => `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`;
+  setRangoBusqueda(f(d), f(h));
+}
+function rangoMes(offset) {
+  const n = new Date();
+  const ini = new Date(n.getFullYear(), n.getMonth()+offset, 1);
+  const fin = new Date(n.getFullYear(), n.getMonth()+offset+1, 0);
+  const f = x => `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`;
+  setRangoBusqueda(f(ini), f(fin));
+}
+
+function exportFechaInput(campo, val) {
+  state[campo] = val;
+  const hay = state.exportDesde || state.exportHasta;
+  const n = hay
+    ? state.gastos.filter(g=>(!state.exportDesde||g.fecha>=state.exportDesde)&&(!state.exportHasta||g.fecha<=state.exportHasta)).length
+    : 0;
+  const btn = document.getElementById("btn-export-todo");
+  if (btn) btn.textContent = `⬇ Exportar a Excel${hay?` (${n} gastos en rango)`:""}`;
 }
 
 function limpiarFiltrosBusqueda() {
