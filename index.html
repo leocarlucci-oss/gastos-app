@@ -2003,13 +2003,23 @@ async function handleImportExcel(input) {
         if (row.actualCellCount === 0) continue;
 
         const empresaRaw = String(get(row,"empresa")||"").trim();
-        const empresa = EMPRESAS.find(e => e.toLowerCase() === empresaRaw.toLowerCase());
+        const isSplit = empresaRaw.toLowerCase() === "split";
+        const empresa = isSplit ? null : EMPRESAS.find(e => e.toLowerCase() === empresaRaw.toLowerCase());
         const monto = parseFloat(get(row,"monto total"));
         const fecha = parseFechaImport(get(row,"fecha"));
 
-        if (!empresa) { errores.push(`Hoja "${ws.name}" fila ${r}: empresa "${empresaRaw}" no reconocida`); continue; }
+        if (!isSplit && !empresa) { errores.push(`Hoja "${ws.name}" fila ${r}: empresa "${empresaRaw}" no reconocida`); continue; }
         if (!fecha) { errores.push(`Hoja "${ws.name}" fila ${r}: fecha inválida`); continue; }
         if (!monto || monto<=0) { errores.push(`Hoja "${ws.name}" fila ${r}: monto inválido`); continue; }
+
+        let splitPartes = null;
+        if (isSplit) {
+          const splitRaw = String(get(row,"split %")||"").trim();
+          const partesPct = splitRaw.split("/").map(s => parseFloat(s.trim()));
+          if (partesPct.length !== 2 || partesPct.some(p => isNaN(p))) { errores.push(`Hoja "${ws.name}" fila ${r}: "Split %" inválido ("${splitRaw}")`); continue; }
+          if (Math.round(partesPct[0]+partesPct[1]) !== 100) { errores.push(`Hoja "${ws.name}" fila ${r}: "Split %" no suma 100 (${splitRaw})`); continue; }
+          splitPartes = [{empresa:"CDM",pct:partesPct[0]},{empresa:"LCK",pct:partesPct[1]}];
+        }
 
         const categorias = catCols.map(ci => { const c = row.getCell(ci); return (c && c.value) ? String(c.value).trim() : ""; }).filter(Boolean);
         const medioBase = String(get(row,"medio de pago")||"").trim();
@@ -2029,21 +2039,52 @@ async function handleImportExcel(input) {
         let montoCuota = montoCuotaRaw ? parseFloat(montoCuotaRaw) : null;
         if (!montoCuota && cantCuotas>0) montoCuota = Math.round(monto/cantCuotas*100)/100;
 
-        nuevos.push({
-          id: Date.now() + nuevos.length,
-          empresa, fecha,
-          titular: String(get(row,"titular/comercio")||"").trim(),
-          desc: String(get(row,"descripción")||get(row,"descripcion")||"").trim() || "Sin descripción",
-          categorias: categorias.length ? categorias : ["Sin categoría"],
-          medio: medioStr(medioBase||null, subtipo||null) || medioBase || "No especificado",
-          moneda, monto,
-          cantCuotas: cantCuotas>0?cantCuotas:null,
-          montoCuota: montoCuota>0?montoCuota:null,
-          nota: String(get(row,"nota")||"").trim(),
-          pagador,
-          hora,
-          updatedAt: Date.now(),
-        });
+        const titular = String(get(row,"titular/comercio")||"").trim();
+        const desc = String(get(row,"descripción")||get(row,"descripcion")||"").trim() || "Sin descripción";
+        const medio = medioStr(medioBase||null, subtipo||null) || medioBase || "No especificado";
+        const nota = String(get(row,"nota")||"").trim();
+
+        if (isSplit) {
+          const groupId = Date.now() + nuevos.length;
+          splitPartes.forEach((p,i) => {
+            const montoParte = Math.round(monto*p.pct/100*100)/100;
+            const cantCuotasParte = cantCuotas>0?cantCuotas:null;
+            const montoCuotaParte = cantCuotasParte ? Math.round(montoParte/cantCuotasParte*100)/100 : null;
+            nuevos.push({
+              id: groupId + i,
+              empresa: p.empresa, fecha,
+              titular,
+              desc,
+              categorias: categorias.length ? categorias : ["Sin categoría"],
+              medio,
+              moneda, monto: montoParte,
+              cantCuotas: cantCuotasParte,
+              montoCuota: montoCuotaParte,
+              nota: `${nota?nota+" · ":""}División ${p.pct}%`,
+              pagador,
+              hora,
+              splitGroupId: groupId,
+              splitPct: p.pct,
+              updatedAt: Date.now(),
+            });
+          });
+        } else {
+          nuevos.push({
+            id: Date.now() + nuevos.length,
+            empresa, fecha,
+            titular,
+            desc,
+            categorias: categorias.length ? categorias : ["Sin categoría"],
+            medio,
+            moneda, monto,
+            cantCuotas: cantCuotas>0?cantCuotas:null,
+            montoCuota: montoCuota>0?montoCuota:null,
+            nota,
+            pagador,
+            hora,
+            updatedAt: Date.now(),
+          });
+        }
       }
     });
 
