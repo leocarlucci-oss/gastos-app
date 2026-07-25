@@ -1868,12 +1868,13 @@ function fmtMonedaExcel(moneda) {
   return '"$ "#,##0.00';
 }
 
-function aplicarEstilosHoja(ws, rows, numCatCols) {
+function aplicarEstilosHoja(ws, rows, numCatCols, extraCols) {
   numCatCols = numCatCols || 1;
-  const colMonedaIdx0 = 6 + numCatCols;       // índice 0-based dentro del array de la fila
-  const colMontoTotal1 = 8 + numCatCols;      // columna 1-based de Excel
-  const colMontoCuota1 = 10 + numCatCols;     // columna 1-based de Excel
-  const totalCols = 13 + numCatCols;
+  const off = extraCols || 0;                 // columnas extra insertadas después de "Empresa"
+  const colMonedaIdx0 = 6 + numCatCols + off; // índice 0-based dentro del array de la fila
+  const colMontoTotal1 = 8 + numCatCols + off;  // columna 1-based de Excel
+  const colMontoCuota1 = 10 + numCatCols + off; // columna 1-based de Excel
+  const totalCols = 13 + numCatCols + off;
 
   const HEADER_FILL = { type:"pattern", pattern:"solid", fgColor:{argb:"FF1E3A5F"} };
   const HEADER_FONT = { name:"Arial", bold:true, color:{argb:"FFFFFFFF"}, size:10 };
@@ -1910,7 +1911,7 @@ function aplicarEstilosHoja(ws, rows, numCatCols) {
     exRow.height = 18;
   });
 
-  const widths = [12,12,24,32, ...Array(numCatCols).fill(18), 16,16,8,14,10,14,28,12,8];
+  const widths = [12,12, ...Array(off).fill(10), 24,32, ...Array(numCatCols).fill(18), 16,16,8,14,10,14,28,12,8];
   widths.forEach((w,i) => { ws.getColumn(i+1).width = w; });
   ws.views = [{ state:"frozen", ySplit:1 }];
   ws.autoFilter = { from:{row:1,column:1}, to:{row:1,column:totalCols} };
@@ -1936,6 +1937,7 @@ function crearHojaListas(wb) {
     {header:"Medio de pago", values: medios},
     {header:"Subtipo", values: subtiposFlat},
     {header:"Moneda", values: monedas},
+    {header:"Empresa o Split", values: [...EMPRESAS, "Split"]},
   ];
   cols.forEach((c, ci) => {
     ws.getCell(1, ci+1).value = c.header;
@@ -1948,28 +1950,30 @@ function crearHojaListas(wb) {
     medioRange: rango(3, medios.length),
     subtipoRange: rango(4, subtiposFlat.length),
     monedaRange: rango(5, monedas.length),
+    empresaSplitRange: rango(6, EMPRESAS.length+1),
   };
 }
 
 // Aplica dropdowns (validación de datos) a una hoja de gastos, incluyendo filas vacías
 // para que al agregar filas nuevas para carga masiva también tengan la lista.
-function aplicarValidacionesHoja(ws, numCatCols, ranges, maxFilas) {
+function aplicarValidacionesHoja(ws, numCatCols, ranges, maxFilas, extraCols, empresaRangeOverride) {
   maxFilas = maxFilas || 500;
+  const off = extraCols || 0;
   const colEmpresa = colLetter(2);
-  const colMedio = colLetter(5+numCatCols);
-  const colSubtipo = colLetter(6+numCatCols);
-  const colMoneda = colLetter(7+numCatCols);
+  const colMedio = colLetter(5+numCatCols+off);
+  const colSubtipo = colLetter(6+numCatCols+off);
+  const colMoneda = colLetter(7+numCatCols+off);
   const dv = (range) => ({ type:"list", allowBlank:true, formulae:[range] });
 
-  ws.dataValidations.add(`${colEmpresa}2:${colEmpresa}${maxFilas}`, dv(ranges.empresaRange));
+  ws.dataValidations.add(`${colEmpresa}2:${colEmpresa}${maxFilas}`, dv(empresaRangeOverride || ranges.empresaRange));
   for (let c=0; c<numCatCols; c++) {
-    const colC = colLetter(5+c);
+    const colC = colLetter(5+c+off);
     ws.dataValidations.add(`${colC}2:${colC}${maxFilas}`, dv(ranges.categoriaRange));
   }
   ws.dataValidations.add(`${colMedio}2:${colMedio}${maxFilas}`, dv(ranges.medioRange));
   ws.dataValidations.add(`${colSubtipo}2:${colSubtipo}${maxFilas}`, dv(ranges.subtipoRange));
   ws.dataValidations.add(`${colMoneda}2:${colMoneda}${maxFilas}`, dv(ranges.monedaRange));
-  const colPagador = colLetter(12+numCatCols);
+  const colPagador = colLetter(12+numCatCols+off);
   ws.dataValidations.add(`${colPagador}2:${colPagador}${maxFilas}`, dv(ranges.empresaRange));
 }
 
@@ -2162,12 +2166,14 @@ async function descargarPlantillaExcel() {
   wb.creator = "Gastos App"; wb.created = new Date();
   const numCat = 3;
   const catHeaders = Array.from({length:numCat},(_,i)=>`Categoría ${i+1}`);
-  const headers = ["Fecha","Empresa","Titular/Comercio","Descripción",...catHeaders,"Medio de pago","Subtipo","Moneda","Monto Total","Cant. Cuotas","Monto/Cuota","Nota","Pagado por","Hora"];
+  const headers = ["Fecha","Empresa","Split %","Titular/Comercio","Descripción",...catHeaders,"Medio de pago","Subtipo","Moneda","Monto Total","Cant. Cuotas","Monto/Cuota","Nota","Pagado por","Hora"];
   const ws = wb.addWorksheet("Plantilla");
   ws.addRow(headers);
-  aplicarEstilosHoja(ws, [], numCat);
+  aplicarEstilosHoja(ws, [], numCat, 1);
   const ranges = crearHojaListas(wb);
-  aplicarValidacionesHoja(ws, numCat, ranges);
+  aplicarValidacionesHoja(ws, numCat, ranges, 500, 1, ranges.empresaSplitRange);
+  // Nota de ayuda en el encabezado de Split %
+  ws.getCell(1,3).note = "Solo si Empresa = Split. Formato: 66/34 (primero CDM, después LCK). Debe sumar 100.";
   const buf = await wb.xlsx.writeBuffer();
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([buf], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
