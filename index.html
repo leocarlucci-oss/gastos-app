@@ -131,6 +131,7 @@ let state = {
   tab: "cargar",
   gastos: sanearIds(load("gastos_v5", [])),
   categorias: load("cats_v5", CATEGORIAS_DEFAULT),
+  catsProyecto: load("cats_proyecto_v1", []),
   deletedCategorias: load("deleted_cats_v1", []),
   // form
   empresa: null, desc:"", titular:"", monto:"", moneda:defaultMoneda(), fecha:hoy(), hora:horaAhora(),
@@ -185,6 +186,7 @@ function sanearIds(gastos) {
 function saveAll() {
   localStorage.setItem("gastos_v5", JSON.stringify(state.gastos));
   localStorage.setItem("cats_v5", JSON.stringify(state.categorias));
+  localStorage.setItem("cats_proyecto_v1", JSON.stringify(state.catsProyecto));
   localStorage.setItem("local_modified", String(Date.now()));
   syncToDrive();
 }
@@ -459,12 +461,19 @@ async function syncToDrive() {
         : [...new Set([...driveCats, ...localCats])];  // drive gana (sync desde otro dispositivo)
       state.categorias = mergedCats;
       localStorage.setItem("cats_v5", JSON.stringify(state.categorias));
+
+      // Marca de "proyecto": unión de local + Drive, sin las eliminadas y solo las que existen
+      const driveProy = driveData.catsProyecto || [];
+      state.catsProyecto = [...new Set([...(state.catsProyecto||[]), ...driveProy])]
+        .filter(c => !allDeletedCats.includes(c) && mergedCats.includes(c));
+      localStorage.setItem("cats_proyecto_v1", JSON.stringify(state.catsProyecto));
     }
 
     // 3. Backup diario y subir el resultado mergeado
     const toUpload = {
       gastos: state.gastos,
       categorias: state.categorias,
+      catsProyecto: state.catsProyecto,
       deletedIds: state.deletedIds,
       deletedCategorias: state.deletedCategorias,
       lastSync: new Date().toISOString()
@@ -770,6 +779,13 @@ function getCats(g) {
   return [];
 }
 function catsEnUso(name) { return state.gastos.filter(g => getCats(g).includes(name)).length; }
+function esCatProyecto(c) { return (state.catsProyecto||[]).includes(c); }
+// Devuelve [{cat, idx}] en el orden de state.categorias, separado por eje
+function catsPorEje() {
+  const proyectos = [], tipos = [];
+  state.categorias.forEach((c,i) => (esCatProyecto(c) ? proyectos : tipos).push({cat:c, idx:i}));
+  return {proyectos, tipos};
+}
 function replaceCatInGastos(oldName, newName) {
   // newName null => quitar la categoría; string => renombrarla
   state.gastos = state.gastos.map(g=>{
@@ -781,10 +797,16 @@ function replaceCatInGastos(oldName, newName) {
 }
 function buildCatMultiPicker(selected, toggleFn) {
   const sel = selected || [];
-  return `<div class="emp-grid" style="grid-template-columns:repeat(auto-fill,minmax(88px,1fr))">${state.categorias.map((c,i)=>{
-    const active = sel.includes(c);
-    return `<button onclick="${toggleFn}(${i})" style="padding:8px 6px;border-radius:8px;border:2px solid ${active?"var(--accent)":"var(--border)"};background:${active?"rgba(245,158,11,.12)":"transparent"};color:${active?"var(--accent)":"var(--muted)"};font-size:12px;font-weight:${active?600:400};cursor:pointer">${active?"✓ ":""}${esc(c)}</button>`;
-  }).join("")}</div>`;
+  const {proyectos, tipos} = catsPorEje();
+  const btn = ({cat,idx}) => {
+    const active = sel.includes(cat);
+    return `<button onclick="${toggleFn}(${idx})" style="padding:8px 6px;border-radius:8px;border:2px solid ${active?"var(--accent)":"var(--border)"};background:${active?"rgba(245,158,11,.12)":"transparent"};color:${active?"var(--accent)":"var(--muted)"};font-size:12px;font-weight:${active?600:400};cursor:pointer">${active?"✓ ":""}${esc(cat)}</button>`;
+  };
+  const grid = arr => `<div class="emp-grid" style="grid-template-columns:repeat(auto-fill,minmax(88px,1fr))">${arr.map(btn).join("")}</div>`;
+  // Si no hay ninguna marcada como proyecto, mostramos una sola grilla como siempre
+  if (!proyectos.length) return grid(tipos);
+  const lbl = t => `<div style="font-size:9px;font-family:monospace;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:2px 0 4px">${t}</div>`;
+  return `${lbl("◈ Proyecto / Viaje")}${grid(proyectos)}${tipos.length?`${lbl("Tipo de gasto")}${grid(tipos)}`:""}`;
 }
 
 function buildEmpGrid(sel, onclickFn) {
@@ -1203,23 +1225,34 @@ function buildResumen() {
 }
 
 function buildCatsListHTML() {
-  const items = state.categorias.map((c,i)=>`
-    <div class="cat-item" draggable="true">
+  const {proyectos, tipos} = catsPorEje();
+  const item = ({cat,idx}) => {
+    const esProy = esCatProyecto(cat);
+    return `
+    <div class="cat-item" draggable="true" data-idx="${idx}" data-proj="${esProy?1:0}">
       <span class="cat-drag-handle" style="color:var(--muted);font-size:18px;padding:0 10px 0 0;cursor:grab;touch-action:none;user-select:none">⠿</span>
-      <span style="flex:1;font-size:13px">${esc(c)}</span>
-      <button onclick="editCat(${i})" style="background:none;border:none;color:var(--muted);font-size:14px">✎</button>
-      <button onclick="delCat(${i})" style="background:none;border:none;color:var(--muted);font-size:14px">🗑</button>
-    </div>`).join("");
-  return `<div style="display:flex;gap:8px;margin-bottom:16px">
+      <span style="flex:1;font-size:13px">${esc(cat)}</span>
+      <button onclick="toggleCatProyecto(${idx})" title="${esProy?"Pasar a tipo de gasto":"Marcar como proyecto/viaje"}" style="background:none;border:none;color:${esProy?"var(--accent)":"var(--muted)"};font-size:13px;opacity:${esProy?1:.45}">◈</button>
+      <button onclick="editCat(${idx})" style="background:none;border:none;color:var(--muted);font-size:14px">✎</button>
+      <button onclick="delCat(${idx})" style="background:none;border:none;color:var(--muted);font-size:14px">🗑</button>
+    </div>`;
+  };
+  const seccion = (titulo, arr, vacio) => `
+    <div style="font-size:10px;font-family:monospace;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 6px">${titulo}</div>
+    ${arr.length ? arr.map(item).join("") : `<div style="font-size:12px;color:var(--muted);padding:6px 2px">${vacio}</div>`}`;
+  return `<div style="display:flex;gap:8px;margin-bottom:4px">
       <input id="nueva-cat" placeholder="Nueva categoría..." onkeydown="if(event.key==='Enter')addCat()">
       <button onclick="addCat()" style="padding:10px 16px;background:var(--accent);color:#0F0F11;border:none;border-radius:8px;font-weight:600;font-size:14px;flex-shrink:0">+</button>
     </div>
-    <div style="overflow-y:auto;flex:1">${items}</div>`;
+    <div style="overflow-y:auto;flex:1">
+      ${seccion("◈ Proyectos / Viajes", proyectos, "Ninguna. Tocá ◈ en una categoría para marcarla.")}
+      ${seccion("Tipos de gasto", tipos, "Ninguna.")}
+    </div>`;
 }
 
 function buildCategoriasTab() {
   return `<div class="panel">
-    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Arrastrá ⠿ para reordenar. Renombrar (✎) actualiza todos los gastos que la usan.</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Arrastrá ⠿ para reordenar (dentro de cada sección). ◈ marca una categoría como proyecto/viaje. ✎ renombra y actualiza todos los gastos.</div>
     ${buildCatsListHTML()}
   </div>`;
 }
@@ -1300,6 +1333,21 @@ function initCatDrag() {
   if (!items.length) return;
   let dragIdx = null;
 
+  // El orden visual está separado en secciones, así que la posición en el DOM ya no
+  // coincide con el índice en state.categorias: usamos data-idx como fuente de verdad.
+  const realIdx = el => parseInt(el.dataset.idx);
+  const moverCat = (fromEl, toEl) => {
+    if (!fromEl || !toEl || fromEl === toEl) return;
+    if (fromEl.dataset.proj !== toEl.dataset.proj) return showToast("⚠ Reordená dentro de la misma sección");
+    const from = realIdx(fromEl), to = realIdx(toEl);
+    if (isNaN(from) || isNaN(to) || from === to) return;
+    const cats = [...state.categorias];
+    const [m] = cats.splice(from, 1);
+    cats.splice(to, 0, m);
+    state.categorias = cats;
+    localStorage.setItem("cats_reordered_at", Date.now().toString());
+    saveAll(); render();
+  };
   items.forEach((item, i) => {
     const handle = item.querySelector(".cat-drag-handle");
 
@@ -1322,12 +1370,7 @@ function initCatDrag() {
       e.preventDefault();
       items.forEach(el => { el.style.borderTop = ""; el.style.opacity = ""; });
       if (dragIdx !== null && dragIdx !== i) {
-        const cats = [...state.categorias];
-        const [m] = cats.splice(dragIdx, 1);
-        cats.splice(i, 0, m);
-        state.categorias = cats;
-        localStorage.setItem("cats_reordered_at", Date.now().toString());
-        saveAll(); render();
+        moverCat(items[dragIdx], item);
       }
       dragIdx = null;
     });
@@ -1354,15 +1397,7 @@ function initCatDrag() {
       item.style.background = "";
       items.forEach(el => el.style.borderTop = "");
       if (target && target !== item) {
-        const targetIdx = items.indexOf(target);
-        if (targetIdx !== -1 && dragIdx !== null) {
-          const cats = [...state.categorias];
-          const [m] = cats.splice(dragIdx, 1);
-          cats.splice(targetIdx, 0, m);
-          state.categorias = cats;
-          localStorage.setItem("cats_reordered_at", Date.now().toString());
-          saveAll(); render();
-        }
+        moverCat(item, target);
       }
       dragIdx = null;
     }, {passive: true});
@@ -1605,6 +1640,13 @@ function confirmarPlantilla() {
 
 // Categorías
 function addCat() { const v=normCatName(document.getElementById("nueva-cat").value.trim()); if(!v||state.categorias.includes(v))return; state.categorias=[...state.categorias,v]; saveAll(); render(); }
+function toggleCatProyecto(i) {
+  const c = state.categorias[i];
+  if (!c) return;
+  const lista = state.catsProyecto || [];
+  state.catsProyecto = lista.includes(c) ? lista.filter(x=>x!==c) : [...lista, c];
+  saveAll(); render();
+}
 function delCat(i) {
   const removed = state.categorias[i];
   if (!removed) return;
@@ -1614,6 +1656,7 @@ function delCat(i) {
     : `¿Eliminar la categoría "${removed}"?`;
   if (!confirm(msg)) return;
   state.categorias = state.categorias.filter((_,j)=>j!==i);
+  state.catsProyecto = (state.catsProyecto||[]).filter(c=>c!==removed);
   state.deletedCategorias = [...new Set([...state.deletedCategorias, removed])];
   localStorage.setItem("deleted_cats_v1", JSON.stringify(state.deletedCategorias));
   saveAll(); render();
@@ -1629,6 +1672,7 @@ function editCat(i) {
     replaceCatInGastos(oldName, newName);
   }
   state.categorias = state.categorias.map((c,j) => j===i ? newName : c);
+  if (esCatProyecto(oldName)) state.catsProyecto = [...new Set([...(state.catsProyecto||[]).filter(c=>c!==oldName), newName])];
   // Tombstone del nombre viejo: si no se marca como eliminado, el próximo sync con Drive
   // (que todavía tiene el nombre viejo) lo trae de vuelta junto al nuevo.
   state.deletedCategorias = [...new Set([...state.deletedCategorias, oldName])].filter(c=>c!==newName);
