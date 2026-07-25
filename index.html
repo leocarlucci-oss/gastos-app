@@ -242,6 +242,39 @@ function normalizarCasingCategorias() {
   localStorage.setItem(FLAG, "1");
 }
 
+// Normaliza el casing de las categorías guardadas EN LOS GASTOS (no solo en la lista)
+// y registra en la lista las que falten. Arregla importaciones viejas que guardaron
+// nombres crudos del Excel (ej "EUROPA JUL26" en vez de "Europa Jul26").
+function normalizarCategoriasDeGastos() {
+  const FLAG = "migrated_gasto_cats_v1";
+  if (localStorage.getItem(FLAG)) return;
+  let changed = false;
+  state.gastos = state.gastos.map(g => {
+    const cats = getCats(g);
+    if (!cats.length) return g;
+    const norm = [];
+    cats.forEach(c => { const n = (String(c).trim().toLowerCase() === "sin categoría") ? "Sin categoría" : normCatName(c); if (n && !norm.includes(n)) norm.push(n); });
+    if (norm.length === cats.length && norm.every((n,i) => n === cats[i])) return g;
+    changed = true;
+    return {...g, categorias: norm, updatedAt: Date.now()};
+  });
+  const faltantes = [];
+  state.gastos.forEach(g => getCats(g).forEach(c => {
+    if (c && c !== "Sin categoría" && !state.categorias.includes(c) && !faltantes.includes(c)) faltantes.push(c);
+  }));
+  if (faltantes.length) {
+    changed = true;
+    state.categorias = [...state.categorias, ...faltantes];
+    if (Array.isArray(state.deletedCategorias) && state.deletedCategorias.length) {
+      state.deletedCategorias = state.deletedCategorias.filter(c => !faltantes.includes(c));
+      localStorage.setItem("deleted_cats_v1", JSON.stringify(state.deletedCategorias));
+    }
+    console.log("Categorías recuperadas desde los gastos:", faltantes);
+  }
+  if (changed) { saveAll(); render(); }
+  localStorage.setItem(FLAG, "1");
+}
+
 // ── Google Drive Sync ─────────────────────────────────────────
 function driveEnabled() { return state.driveToken && DRIVE_CLIENT_ID; }
 
@@ -2021,7 +2054,7 @@ async function handleImportExcel(input) {
           splitPartes = [{empresa:"CDM",pct:partesPct[0]},{empresa:"LCK",pct:partesPct[1]}];
         }
 
-        const categorias = catCols.map(ci => { const c = row.getCell(ci); return (c && c.value) ? String(c.value).trim() : ""; }).filter(Boolean);
+        const categorias = catCols.map(ci => { const c = row.getCell(ci); if(!c || !c.value) return ""; const raw = String(c.value).trim(); return raw.toLowerCase() === "sin categoría" ? "Sin categoría" : normCatName(raw); }).filter(Boolean);
         const medioBase = String(get(row,"medio de pago")||"").trim();
         const subtipo = String(get(row,"subtipo")||"").trim();
         const monedaRaw = String(get(row,"moneda")||"").trim();
@@ -2098,6 +2131,22 @@ async function handleImportExcel(input) {
     if (!confirm(msg)) return;
 
     state.gastos = [...state.gastos, ..._add];
+
+    // Registrar categorías nuevas que vengan del Excel y todavía no estén en la lista
+    const catsNuevas = [];
+    _add.forEach(g => getCats(g).forEach(c => {
+      if (c && c !== "Sin categoría" && !state.categorias.includes(c) && !catsNuevas.includes(c)) catsNuevas.push(c);
+    }));
+    if (catsNuevas.length) {
+      state.categorias = [...state.categorias, ...catsNuevas];
+      // Si alguna estaba tombstoneada por un borrado previo, la sacamos del tombstone
+      if (Array.isArray(state.deletedCategorias) && state.deletedCategorias.length) {
+        state.deletedCategorias = state.deletedCategorias.filter(c => !catsNuevas.includes(c));
+        localStorage.setItem("deleted_cats_v1", JSON.stringify(state.deletedCategorias));
+      }
+      console.log("Categorías nuevas agregadas desde el Excel:", catsNuevas);
+    }
+
     saveAll();
     render();
     if (errores.length) console.warn("Filas omitidas en la importación:", errores);
@@ -2217,7 +2266,7 @@ if ("serviceWorker" in navigator) {
 }
 handleOAuthCallback();
 render();
-if (driveEnabled()) { loadFromDrive().then(migrarCatJetsmartTraslados).then(normalizarCasingCategorias); } else { migrarCatJetsmartTraslados(); normalizarCasingCategorias(); }
+if (driveEnabled()) { loadFromDrive().then(migrarCatJetsmartTraslados).then(normalizarCasingCategorias).then(normalizarCategoriasDeGastos); } else { migrarCatJetsmartTraslados(); normalizarCasingCategorias(); normalizarCategoriasDeGastos(); }
 // Sync periódico cada 2 minutos si hay conexión activa con Drive
 setInterval(() => {
   if (driveEnabled() && state.syncStatus !== "syncing") loadFromDrive();
