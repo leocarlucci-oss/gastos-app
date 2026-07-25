@@ -1453,7 +1453,8 @@ function buildBuscarResultsHTML() {
     ? `<button onclick="exportarBusqueda()" style="width:100%;padding:10px;background:linear-gradient(135deg,#065F46,#059669);color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:8px;cursor:pointer">⬇ Exportar resultados a Excel (${resultados.length})</button>`
     : "";
   const bulkBtn = hayFiltro && resultados.length > 0
-    ? `<button onclick="agregarCatAResultados()" style="width:100%;padding:10px;background:var(--surface);color:var(--accent);border:1px solid var(--accent)55;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:12px;cursor:pointer">🏷 Agregar categoría a los ${resultados.length} resultados</button>`
+    ? `<button onclick="agregarCatAResultados()" style="width:100%;padding:10px;background:var(--surface);color:var(--accent);border:1px solid var(--accent)55;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:8px;cursor:pointer">🏷 Agregar categoría a los ${resultados.length} resultados</button>`
+      + `<button onclick="eliminarResultados()" style="width:100%;padding:10px;background:transparent;color:#EF4444;border:1px solid #EF444455;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:12px;cursor:pointer">🗑 Eliminar los ${resultados.length} resultados</button>`
     : "";
   const totalHTML = hayFiltro ? calcularTotalesBusqueda(resultados) : "";
   return totalHTML + countMsg + exportBtn + bulkBtn + items;
@@ -1531,6 +1532,23 @@ function agregarCatAResultados() {
   }
   saveAll(); render();
   showToast(`✓ "${cat}" agregada a ${aModificar} gasto${aModificar!==1?"s":""}`);
+}
+
+function eliminarResultados() {
+  const resultados = getFiltradosBusqueda();
+  if (!resultados || !resultados.length) return;
+  const n = resultados.length;
+  const totales = [...new Set(resultados.map(g=>g.moneda||"ARS"))].map(mon=>{
+    const t = resultados.filter(g=>(g.moneda||"ARS")===mon).reduce((s,g)=>s+g.monto,0);
+    return fmtMonto(t, mon);
+  }).join(" · ");
+  if (!confirm(`Se van a ELIMINAR ${n} gasto${n!==1?"s":""} (${totales}).\n\nEsta acción no se puede deshacer. ¿Continuar?`)) return;
+  if (!confirm(`Confirmá de nuevo: eliminar ${n} gasto${n!==1?"s":""}.`)) return;
+  const ids = new Set(resultados.map(g => String(g.id)));
+  state.gastos = state.gastos.filter(g => !ids.has(String(g.id)));
+  state.deletedIds = [...new Set([...(state.deletedIds||[]), ...resultados.map(g=>g.id)])];
+  saveAll(); render();
+  showToast(`✓ ${n} gasto${n!==1?"s":""} eliminado${n!==1?"s":""}`);
 }
 
 function limpiarFiltrosBusqueda() {
@@ -2066,7 +2084,9 @@ function aplicarValidacionesHoja(ws, numCatCols, ranges, maxFilas, extraCols, em
 function parseFechaImport(val) {
   if (val === null || val === undefined || val === "") return null;
   if (val instanceof Date) {
-    const y=val.getFullYear(), m=String(val.getMonth()+1).padStart(2,"0"), d=String(val.getDate()).padStart(2,"0");
+    // ExcelJS devuelve las fechas de Excel como medianoche UTC. Si leemos con getters
+    // locales, en zonas con offset negativo (ej. UTC-3) la fecha se corre un día atrás.
+    const y=val.getUTCFullYear(), m=String(val.getUTCMonth()+1).padStart(2,"0"), d=String(val.getUTCDate()).padStart(2,"0");
     return `${y}-${m}-${d}`;
   }
   if (typeof val === "number") {
