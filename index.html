@@ -162,7 +162,7 @@ let state = {
   vozActiva:false, vozStatus:"",
   // lista
   filtro:"Todos",
-  busqueda:"", filtroBEmp:"", filtroBCats:[], filtroBCatsExcl:[], filtroBMedio:"", filtroBPagador:"", filtroDesde:"", filtroHasta:"",
+  busqueda:"", filtroBEmp:"", filtroBCats:[], filtroBCatsExcl:[], filtroBMedio:"", filtroBMoneda:"", filtroMontoMin:"", filtroMontoMax:"", filtroBPagador:"", filtroDesde:"", filtroHasta:"",
   exportDesde:"", exportHasta:"",
   // modales
   showCats:false, plantillaEnUso:null, sugerencia:null, gastoViendo:null, listPage:1,
@@ -1124,7 +1124,7 @@ function buildLista() {
 
 function buildBuscar() {
   const mediosDisp = [...new Set(state.gastos.map(g=>g.medio).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
-  const hayActivos = !!(state.busqueda||state.filtroBEmp||(state.filtroBCats&&state.filtroBCats.length)||(state.filtroBCatsExcl&&state.filtroBCatsExcl.length)||state.filtroBMedio||state.filtroBPagador||state.filtroDesde||state.filtroHasta);
+  const hayActivos = !!(state.busqueda||state.filtroBEmp||(state.filtroBCats&&state.filtroBCats.length)||(state.filtroBCatsExcl&&state.filtroBCatsExcl.length)||state.filtroBMedio||state.filtroBMoneda||state.filtroMontoMin||state.filtroMontoMax||state.filtroBPagador||state.filtroDesde||state.filtroHasta);
 
   const inputStyle = "width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--fg);font-size:13px;box-sizing:border-box;outline:none";
 
@@ -1159,6 +1159,29 @@ function buildBuscar() {
         <option value="">Todos</option>
         ${EMPRESAS.map(e=>`<option${state.filtroBPagador===e?" selected":""}>${e}</option>`).join("")}
       </select>
+    </div>
+    <div class="field" style="margin-bottom:10px">
+      <span class="label">Moneda</span>
+      <select onchange="setState({filtroBMoneda:this.value})" style="${inputStyle}">
+        <option value="">Todas</option>
+        ${["ARS","U$S","Euros","CLP"].map(m=>`<option${state.filtroBMoneda===m?" selected":""}>${m}</option>`).join("")}
+      </select>
+    </div>
+    <div class="row2" style="margin-bottom:6px">
+      <div class="field" style="margin:0">
+        <span class="label">Monto desde</span>
+        <input type="text" inputmode="decimal" id="filtro-monto-min" value="${esc(state.filtroMontoMin)}"
+          oninput="montoFiltroInput('filtroMontoMin',this.value)" placeholder="0" style="${inputStyle}">
+      </div>
+      <div class="field" style="margin:0">
+        <span class="label">Monto hasta</span>
+        <input type="text" inputmode="decimal" id="filtro-monto-max" value="${esc(state.filtroMontoMax)}"
+          oninput="montoFiltroInput('filtroMontoMax',this.value)" placeholder="sin tope" style="${inputStyle}">
+      </div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+      <button onclick="montoExacto()" style="padding:5px 10px;border-radius:14px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:11px;cursor:pointer">= exacto</button>
+      ${(state.filtroMontoMin||state.filtroMontoMax)?`<button onclick="setRangoMonto('','')" style="padding:5px 10px;border-radius:14px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:11px;cursor:pointer">✕ montos</button>`:""}
     </div>
     <div class="row2" style="margin-bottom:14px">
       <div class="field" style="margin:0">
@@ -1482,7 +1505,7 @@ function buildBuscarResultsHTML() {
 }
 function busquedaInput(val) {
   state.busqueda = val;
-  const hayActivos = !!(state.busqueda||state.filtroBEmp||(state.filtroBCats&&state.filtroBCats.length)||(state.filtroBCatsExcl&&state.filtroBCatsExcl.length)||state.filtroBMedio||state.filtroBPagador||state.filtroDesde||state.filtroHasta);
+  const hayActivos = !!(state.busqueda||state.filtroBEmp||(state.filtroBCats&&state.filtroBCats.length)||(state.filtroBCatsExcl&&state.filtroBCatsExcl.length)||state.filtroBMedio||state.filtroBMoneda||state.filtroMontoMin||state.filtroMontoMax||state.filtroBPagador||state.filtroDesde||state.filtroHasta);
   const limpiarEl = document.getElementById("buscar-limpiar-wrap");
   if (limpiarEl) limpiarEl.innerHTML = hayActivos
     ? '<button onclick="limpiarFiltrosBusqueda()" style="padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:12px;cursor:pointer;white-space:nowrap">✕ Limpiar</button>'
@@ -1508,13 +1531,25 @@ function getFiltradosBusqueda() {
   const pag = state.filtroBPagador||"";
   const desde = state.filtroDesde||"";
   const hasta = state.filtroHasta||"";
-  const hayFiltro = q||emp||cats.length||catsExcl.length||med||pag||desde||hasta;
+  const mon = state.filtroBMoneda||"";
+  // Aceptamos coma o punto como separador decimal
+  const numFiltro = v => { const s=String(v==null?"":v).trim().replace(",","."); if(!s) return null; const n=parseFloat(s); return isNaN(n)?null:n; };
+  const mMin = numFiltro(state.filtroMontoMin);
+  const mMax = numFiltro(state.filtroMontoMax);
+  const hayFiltro = q||emp||cats.length||catsExcl.length||med||mon||mMin!==null||mMax!==null||pag||desde||hasta;
   if(!hayFiltro) return null;
   return [...state.gastos].filter(g=>{
     if(q && !((g.titular||"").toLowerCase().includes(q)||(g.desc||"").toLowerCase().includes(q)||(g.nota||"").toLowerCase().includes(q))) return false;
     if(emp && g.empresa!==emp) return false;
     if(cats.length) { const gc=getCats(g); if(!cats.every(c=>gc.includes(c))) return false; }
     if(catsExcl.length) { const gc=getCats(g); if(gc.some(c=>catsExcl.includes(c))) return false; }
+    if(mon && (g.moneda||"ARS")!==mon) return false;
+    if(mMin!==null || mMax!==null) {
+      // Comparamos en centavos para evitar los errores de redondeo de los flotantes
+      const cts = Math.round((parseFloat(g.monto)||0)*100);
+      if(mMin!==null && cts < Math.round(mMin*100)) return false;
+      if(mMax!==null && cts > Math.round(mMax*100)) return false;
+    }
     if(med && !(g.medio||"").startsWith(med)) return false;
     if(pag && g.pagador!==pag) return false;
     if(desde && g.fecha<desde) return false;
@@ -1586,7 +1621,7 @@ function filtroFechaInput(campo, val) {
   refrescarBusqueda();
 }
 function refrescarBusqueda() {
-  const hayActivos = !!(state.busqueda||state.filtroBEmp||(state.filtroBCats&&state.filtroBCats.length)||(state.filtroBCatsExcl&&state.filtroBCatsExcl.length)||state.filtroBMedio||state.filtroBPagador||state.filtroDesde||state.filtroHasta);
+  const hayActivos = !!(state.busqueda||state.filtroBEmp||(state.filtroBCats&&state.filtroBCats.length)||(state.filtroBCatsExcl&&state.filtroBCatsExcl.length)||state.filtroBMedio||state.filtroBMoneda||state.filtroMontoMin||state.filtroMontoMax||state.filtroBPagador||state.filtroDesde||state.filtroHasta);
   const limpiarEl = document.getElementById("buscar-limpiar-wrap");
   if (limpiarEl) limpiarEl.innerHTML = hayActivos
     ? '<button onclick="limpiarFiltrosBusqueda()" style="padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--muted);font-size:12px;cursor:pointer;white-space:nowrap">✕ Limpiar</button>'
@@ -1644,8 +1679,26 @@ function buildCatFilterPicker() {
   return `${lbl("◈ Proyecto / Viaje")}${grid(proyectos)}${tipos.length?`${lbl("Tipo de gasto")}${grid(tipos)}`:""}`;
 }
 
+// Mismo criterio que las fechas: no re-renderizamos toda la app mientras se tipea
+function montoFiltroInput(campo, val) {
+  state[campo] = val;
+  refrescarBusqueda();
+}
+function setRangoMonto(min, max) {
+  state.filtroMontoMin = min; state.filtroMontoMax = max;
+  const a = document.getElementById("filtro-monto-min"); if (a) a.value = min;
+  const b = document.getElementById("filtro-monto-max"); if (b) b.value = max;
+  refrescarBusqueda();
+}
+// Copia el "desde" al "hasta" para buscar un monto puntual
+function montoExacto() {
+  const v = state.filtroMontoMin || state.filtroMontoMax;
+  if (!v) return showToast("Escribí un monto en 'desde'");
+  setRangoMonto(v, v);
+}
+
 function limpiarFiltrosBusqueda() {
-  setState({busqueda:"",filtroBEmp:"",filtroBCats:[],filtroBCatsExcl:[],filtroBMedio:"",filtroBPagador:"",filtroDesde:"",filtroHasta:""});
+  setState({busqueda:"",filtroBEmp:"",filtroBCats:[],filtroBCatsExcl:[],filtroBMedio:"",filtroBMoneda:"",filtroMontoMin:"",filtroMontoMax:"",filtroBPagador:"",filtroDesde:"",filtroHasta:""});
 }
 function cargarMasGastos() { setState({listPage: state.listPage + 1}); }
 function setEmpresa(e) { setState({empresa:e}); }
