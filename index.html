@@ -405,7 +405,7 @@ async function hacerBackupDiario(data) {
 
     // Limpiar backups con más de 30 días
     const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - 30);
+    cutoff.setDate(cutoff.getDate() - 10);
     const cutoffStr = cutoff.toISOString().split("T")[0];
     const search = await fetch(
       `https://www.googleapis.com/drive/v3/files?q=name+contains+'gastos_app_backup_'+and+trashed=false&fields=files(id,name)`,
