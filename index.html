@@ -322,6 +322,79 @@ function mergeGastos(driveGastos, localGastos, driveDeletedIds, localDeletedIds)
   return { merged: Array.from(byId.values()), allDeletedIds: Array.from(allDeletedIds) };
 }
 
+async function moverArchivoACarpeta(fileId, folderId) {
+  try {
+    const meta = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=parents`, {
+      headers: { "Authorization": `Bearer ${state.driveToken}` }
+    });
+    if (!meta.ok) return;
+    const { parents } = await meta.json();
+    if (parents && parents.includes(folderId)) return; // ya está en la carpeta correcta
+    const removeParents = (parents || []).join(",");
+    const url = `https://www.googleapis.com/drive/v3/files/${fileId}?addParents=${folderId}` + (removeParents ? `&removeParents=${removeParents}` : "");
+    await fetch(url, { method: "PATCH", headers: { "Authorization": `Bearer ${state.driveToken}` } });
+  } catch (e) {
+    console.warn("No se pudo mover archivo a la carpeta de la app:", e);
+  }
+}
+
+async function migrarArchivosSueltos(folderId) {
+  try {
+    if (state.driveFileId) await moverArchivoACarpeta(state.driveFileId, folderId);
+    const search = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=name+contains+'gastos_app_backup_'+and+trashed=false&fields=files(id,name,parents)`,
+      { headers: { "Authorization": `Bearer ${state.driveToken}` } }
+    );
+    if (search.ok) {
+      const { files } = await search.json();
+      for (const f of (files || [])) {
+        if (!f.parents || !f.parents.includes(folderId)) {
+          await moverArchivoACarpeta(f.id, folderId);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("Migración de archivos sueltos falló (no crítico):", e);
+  }
+}
+
+async function ensureDriveFolder() {
+  let folderId = localStorage.getItem("drive_app_folder_id");
+  if (!folderId) {
+    try {
+      const search = await fetch(
+        `https://www.googleapis.com/drive/v3/files?q=name='Gastos_App'+and+mimeType='application/vnd.google-apps.folder'+and+trashed=false&fields=files(id,name)`,
+        { headers: { "Authorization": `Bearer ${state.driveToken}` } }
+      );
+      if (search.ok) {
+        const { files } = await search.json();
+        if (files && files.length > 0) folderId = files[0].id;
+      }
+      if (!folderId) {
+        const create = await fetch("https://www.googleapis.com/drive/v3/files", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${state.driveToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ name: "Gastos_App", mimeType: "application/vnd.google-apps.folder" })
+        });
+        if (create.ok) {
+          const data = await create.json();
+          folderId = data.id;
+        }
+      }
+      if (folderId) localStorage.setItem("drive_app_folder_id", folderId);
+    } catch (e) {
+      console.warn("No se pudo resolver la carpeta de Drive de la app:", e);
+    }
+  }
+  if (!folderId) folderId = DRIVE_FOLDER_ID; // fallback si todo falló
+
+  if (folderId !== DRIVE_FOLDER_ID && !localStorage.getItem("drive_migrated_v1")) {
+    await migrarArchivosSueltos(folderId);
+    localStorage.setItem("drive_migrated_v1", "1");
+  }
+  return folderId;
+}
+
 async function fetchDriveData() {
   let fileId = state.driveFileId;
   if (!fileId) {
@@ -357,10 +430,11 @@ async function uploadDriveData(data) {
       body: content
     });
   } else {
+    const folderId = await ensureDriveFolder();
     const meta = await fetch("https://www.googleapis.com/drive/v3/files", {
       method: "POST",
       headers: { "Authorization": `Bearer ${state.driveToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ name: DRIVE_FILE_NAME, mimeType: "application/json", parents: [DRIVE_FOLDER_ID] })
+      body: JSON.stringify({ name: DRIVE_FILE_NAME, mimeType: "application/json", parents: [folderId] })
     });
     if (meta.status === 401) return { status: 401 };
     const metaData = await meta.json();
@@ -388,10 +462,11 @@ async function hacerBackupDiario(data) {
     const content = JSON.stringify({ ...data, backupDate: hoyStr });
 
     // Crear el archivo de backup del día
+    const folderId = await ensureDriveFolder();
     const meta = await fetch("https://www.googleapis.com/drive/v3/files", {
       method: "POST",
       headers: { "Authorization": `Bearer ${state.driveToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ name: backupName, mimeType: "application/json", parents: [DRIVE_FOLDER_ID] })
+      body: JSON.stringify({ name: backupName, mimeType: "application/json", parents: [folderId] })
     });
     if (!meta.ok) return;
     const metaData = await meta.json();
