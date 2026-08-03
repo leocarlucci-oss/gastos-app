@@ -1506,7 +1506,21 @@ function initCatDrag() {
 }
 
 // ── Acciones ───────────────────────────────────────────────────
-function setTab(t) { setState({tab:t}); }
+function formularioCargarVacio() {
+  return !state.desc.trim() && !state.titular.trim() && !state.monto;
+}
+function refrescarFechaSiCorresponde() {
+  if (state.tab === "cargar" && formularioCargarVacio()) {
+    const h = hoy(), ha = horaAhora();
+    if (state.fecha !== h || state.hora !== ha) { state.fecha = h; state.hora = ha; return true; }
+  }
+  return false;
+}
+function setTab(t) {
+  setState({tab:t}, false);
+  refrescarFechaSiCorresponde();
+  render();
+}
 function setFiltro(f) { setState({filtro:f, listPage:1}); }
 
 function calcularTotalesBusqueda(resultados) {
@@ -2526,12 +2540,16 @@ render();
 if (driveEnabled()) { loadFromDrive().then(migrarCatJetsmartTraslados).then(normalizarCasingCategorias).then(normalizarCategoriasDeGastos); } else { migrarCatJetsmartTraslados(); normalizarCasingCategorias(); normalizarCategoriasDeGastos(); }
 // Sync periódico cada 2 minutos si hay conexión activa con Drive
 setInterval(() => {
+  if (refrescarFechaSiCorresponde()) render();
   if (driveEnabled() && state.syncStatus !== "syncing") loadFromDrive();
 }, 2 * 60 * 1000);
 // Sync al volver a la pestaña/app (visibilitychange)
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible" && driveEnabled() && state.syncStatus !== "syncing" && !state.isOffline) {
-    loadFromDrive();
+  if (document.visibilityState === "visible") {
+    if (refrescarFechaSiCorresponde()) render();
+    if (driveEnabled() && state.syncStatus !== "syncing" && !state.isOffline) {
+      loadFromDrive();
+    }
   }
 });
 // Detectar cambios de conectividad
