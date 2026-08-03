@@ -963,7 +963,7 @@ function buildSplitEditor(parts, updateFn, addFn, eqFn, pctFn, totalId) {
         <input type="number" min="0" max="100" value="${p.pct}" oninput="${pctFn}(${i},parseFloat(this.value)||0)">
         <span class="pct-sym">%</span>
       </div>
-      ${parts.length>2?`<button class="btn-icon" onclick="removeSplitPart_${addFn.replace(/[^a-z]/gi,'')}(${i})">✕</button>`:""}
+      ${parts.length>2?`<button class="btn-icon" onclick="removeSplitPart${addFn.replace(/[^a-z]/gi,'')}(${i})">✕</button>`:""}
     </div>
   `).join("");
   return `${rows}
