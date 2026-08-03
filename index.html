@@ -75,7 +75,6 @@ button{cursor:pointer;}
 .upload-zone:hover{border-color:var(--accent);}
 .preview-img{width:100%;max-height:180px;object-fit:contain;border-radius:8px;margin-top:12px;}
 .ia-result{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;margin-top:14px;}
-.sugerencia{margin-top:6px;padding:8px 12px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:8px;display:flex;align-items:center;justify-content:space-between;}
 .sync-badge{font-family:'DM Mono',monospace;font-size:11px;}
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1E1E26;border:1px solid var(--border);color:var(--text);padding:10px 18px;border-radius:8px;font-size:13px;z-index:999;pointer-events:none;opacity:0;transition:opacity .2s;white-space:nowrap;}
 .toast.show{opacity:1;}
@@ -166,7 +165,7 @@ let state = {
   busqueda:"", filtroBEmp:"", filtroBCats:[], filtroBCatsExcl:[], filtroBMedio:"", filtroBMoneda:"", filtroMontoMin:"", filtroMontoMax:"", filtroBPagador:"", filtroDesde:"", filtroHasta:"",
   exportDesde:"", exportHasta:"",
   // modales
-  showCats:false, plantillaEnUso:null, sugerencia:null, gastoViendo:null, listPage:1,
+  showCats:false, gastoViendo:null, listPage:1,
   // sync
   syncStatus:"idle", isOffline:!navigator.onLine,
   // drive
@@ -760,6 +759,31 @@ function acTitular(inputEl, dropdownId) {
   dd.style.display = "block";
 }
 
+function getDescripcionesConocidas() {
+  const set = new Set(
+    state.gastos
+      .map(g => (g.desc || "").trim())
+      .filter(t => t.length > 0)
+  );
+  return [...set].sort((a, b) => a.localeCompare(b));
+}
+
+function acDesc(inputEl, dropdownId) {
+  if (typeof inputEl === "string") inputEl = document.getElementById(inputEl);
+  if (!inputEl) return;
+  const q = (inputEl.value || "").toLowerCase();
+  if (q.length < 2) { const dd0 = document.getElementById(dropdownId); if (dd0) dd0.style.display = "none"; return; }
+  const todos = getDescripcionesConocidas();
+  const filtrados = todos.filter(t => t.toLowerCase().includes(q) && t.toLowerCase() !== q);
+  const dd = document.getElementById(dropdownId);
+  if (!dd) return;
+  if (filtrados.length === 0) { dd.style.display = "none"; return; }
+  dd.innerHTML = filtrados.map(t =>
+    `<div class="ac-item" onmousedown="acElegir(event,'${dropdownId}')">${esc(t)}</div>`
+  ).join("");
+  dd.style.display = "block";
+}
+
 function acElegir(e, dropdownId) {
   e.preventDefault();
   const val = e.target.textContent;
@@ -769,6 +793,14 @@ function acElegir(e, dropdownId) {
   if (dropdownId === "ac-cargar") {
     state.titular = val;
     const inp = document.getElementById("inp-titular");
+    if (inp) inp.value = val;
+  } else if (dropdownId === "ac-desc-cargar") {
+    state.desc = val;
+    const inp = document.getElementById("inp-desc");
+    if (inp) inp.value = val;
+  } else if (dropdownId === "ac-desc-modal") {
+    state._editDesc = val;
+    const inp = dd.previousElementSibling;
     if (inp) inp.value = val;
   } else {
     state._editTitular = val;
@@ -830,7 +862,6 @@ function buildApp() {
     ${state.tab==="resumen"  ? buildResumen()   : ""}
     ${state.tab==="categorias"? buildCategoriasTab() : ""}
     ${state.showCats         ? buildModalCats() : ""}
-    ${state.plantillaEnUso   ? buildModalPlantilla() : ""}
   `;
 }
 
@@ -1014,7 +1045,7 @@ function buildModalEditarGasto() {
       </div>
       <div class="field"><span class="label">Empresa</span>${buildEmpGrid(eEmp,"setEditEmpresa")}</div>
       <div class="field"><span class="label">Titular / Comercio</span><div class="ac-wrap"><input value="${esc(eTitular)}" oninput="state._editTitular=this.value;acTitular(this,'ac-modal')" onfocus="this.select();acTitular(this,'ac-modal')" onblur="setTimeout(()=>acCerrar('ac-modal'),200)" placeholder="Ej: YPF, Mercado Libre..." autocomplete="off"><div id="ac-modal" class="ac-dropdown" style="display:none"></div></div></div>
-      <div class="field"><span class="label">Descripción</span><input value="${esc(eDesc)}" oninput="state._editDesc=this.value"></div>
+      <div class="field"><span class="label">Descripción</span><div class="ac-wrap"><input value="${esc(eDesc)}" oninput="state._editDesc=this.value;acDesc(this,'ac-desc-modal')" onfocus="acDesc(this,'ac-desc-modal')" onblur="setTimeout(()=>acCerrar('ac-desc-modal'),200)" autocomplete="off"><div id="ac-desc-modal" class="ac-dropdown" style="display:none"></div></div></div>
       <div class="field">
         <span class="label" style="display:flex;justify-content:space-between;align-items:center">
           <span>Categoría</span>
@@ -1039,12 +1070,6 @@ function buildModalEditarGasto() {
 }
 
 function buildCargar() {
-  const sugHTML = state.sugerencia ? `
-    <div class="sugerencia">
-      <span style="font-size:12px;color:var(--accent)">★ ¿Repetir <b>"${state.sugerencia.desc}"</b>?</span>
-      <button onclick="usarSugerencia()" style="padding:4px 10px;border-radius:6px;background:var(--accent);color:#0F0F11;border:none;font-size:11px;font-weight:600">Usar</button>
-    </div>` : "";
-
   return `<div class="panel">
     <div class="split-toggle">
       <button class="split-btn${!state.splitMode?" active":""}" onclick="setState({splitMode:false})">Una empresa</button>
@@ -1062,8 +1087,10 @@ function buildCargar() {
     </div>
     <div class="field">
       <span class="label">Descripción</span>
-      <input id="inp-desc" value="${esc(state.desc)}" oninput="onDescChange(this.value)" placeholder="Ej: Cena, combustible, repuesto...">
-      ${sugHTML}
+      <div class="ac-wrap">
+        <input id="inp-desc" value="${esc(state.desc)}" oninput="state.desc=this.value;acDesc('inp-desc','ac-desc-cargar')" onfocus="acDesc('inp-desc','ac-desc-cargar')" onblur="setTimeout(()=>acCerrar('ac-desc-cargar'),200)" placeholder="Ej: Cena, combustible, repuesto..." autocomplete="off">
+        <div id="ac-desc-cargar" class="ac-dropdown" style="display:none"></div>
+      </div>
     </div>
     <div class="field">
       <span class="label" style="display:flex;justify-content:space-between;align-items:center">
@@ -1385,52 +1412,6 @@ function buildModalCats() {
         <button onclick="setState({showCats:false})" style="background:none;border:none;color:var(--muted);font-size:20px">✕</button>
       </div>
       ${buildCatsListHTML()}
-    </div>
-  </div>`;
-}
-
-function buildModalPlantilla() {
-  const p = state.plantillaEnUso;
-  const partesMedio = (p.medio||"").split(" · ");
-  const m = state._modalMedio !== undefined ? state._modalMedio : (partesMedio[0]||null);
-  const sm = state._modalSubMedio !== undefined ? state._modalSubMedio : (partesMedio[1]||null);
-  const mDesc = state._modalDesc !== undefined ? state._modalDesc : (p.desc||"");
-  const mTitular = state._modalTitular !== undefined ? state._modalTitular : (p.titular||"");
-  const mMonto = state._modalMonto !== undefined ? state._modalMonto : (p.monto||"");
-  const mMoneda = state._modalMoneda !== undefined ? state._modalMoneda : (p.moneda||"ARS");
-  const mFecha = state._modalFecha !== undefined ? state._modalFecha : hoy();
-  const mCats = state._modalCats !== undefined ? state._modalCats : getCats(p);
-  const mNota = state._modalNota !== undefined ? state._modalNota : (p.nota||"");
-  const mEmp = state._modalEmpresa !== undefined ? state._modalEmpresa : (p.empresa||null);
-
-  return `<div class="modal-overlay">
-    <div class="modal">
-      <div class="modal-header">
-        <div style="font-family:monospace;font-size:13px;font-weight:500;color:var(--accent)">★ Usar plantilla</div>
-        <button onclick="cerrarModal()" style="background:none;border:none;color:var(--muted);font-size:20px">✕</button>
-      </div>
-      <div class="field"><span class="label">Empresa</span>${buildEmpGrid(mEmp,"setModalEmpresa")}</div>
-      <div class="field"><span class="label">Titular / Comercio</span><input value="${esc(mTitular)}" oninput="state._modalTitular=this.value" placeholder="Ej: YPF, Mercado Libre..."></div>
-      <div class="field"><span class="label">Descripción</span><input value="${esc(mDesc)}" oninput="state._modalDesc=this.value"></div>
-      <div class="field">
-        <span class="label" style="display:flex;justify-content:space-between;align-items:center">
-          <span>Categoría</span>
-          <button onclick="setState({showCats:true})" style="background:none;border:none;color:var(--accent);font-size:11px;font-family:monospace;text-transform:uppercase;letter-spacing:.5px">✎ editar</button>
-        </span>
-        ${buildCatMultiPicker(mCats,"toggleCatModal")}
-      </div>
-      <div class="row2">
-        <div class="field"><span class="label">Monto</span><input type="number" value="${mMonto}" oninput="state._modalMonto=this.value" step="0.01"></div>
-        <div class="field"><span class="label">Moneda</span>
-          <select onchange="state._modalMoneda=this.value">
-            ${["ARS","U$S","Euros","CLP"].map(mo=>`<option${mMoneda===mo?" selected":""}>${mo}</option>`).join("")}
-          </select>
-        </div>
-      </div>
-      <div class="field"><span class="label">Fecha</span><input type="date" value="${mFecha}" onchange="state._modalFecha=this.value"></div>
-      <div class="field"><span class="label">Medio de pago</span>${buildMedioPicker(m,sm,"setModalMedio","setModalSubMedio")}</div>
-      <div class="field"><span class="label">Nota</span><input value="${esc(mNota)}" oninput="state._modalNota=this.value"></div>
-      <button class="btn-primary" onclick="confirmarPlantilla()">Confirmar y agregar</button>
     </div>
   </div>`;
 }
@@ -1785,8 +1766,6 @@ function toggleCatCargar(i) {
   render();
 }
 function setEmpIA(e) { setState({empIA:e}); }
-function setModalEmpresa(e) { state._modalEmpresa=e; render(); }
-
 function setMedio(m) {
   let moneda = state.moneda;
   if(m==="TC U$S") moneda="U$S";
@@ -1794,32 +1773,6 @@ function setMedio(m) {
   setState({medio:m,subMedio:null,moneda,tcCuotas:false,cantCuotas:""});
 }
 function setSubMedio(s) { setState({subMedio:s}); }
-function setModalMedio(m) { state._modalMedio=m; state._modalSubMedio=null; render(); }
-function setModalSubMedio(s) { state._modalSubMedio=s; render(); }
-
-function onDescChange(v) {
-  state.desc = v;
-  // Sugerencia automática - sin re-render para no perder foco
-  let sug = null;
-  if (v.length >= 3) {
-    const key = v.toLowerCase().trim();
-    sug = state.gastos.find(g => g.desc && (g.desc.toLowerCase().includes(key) || key.includes(g.desc.toLowerCase().trim().slice(0,4))));
-    if (sug && sug.desc.toLowerCase() === v.toLowerCase()) sug = null;
-  }
-  const prevSug = state.sugerencia;
-  state.sugerencia = sug;
-  // Solo re-render si cambió la sugerencia, y restaurar foco después
-  if ((prevSug && prevSug.id) !== (sug && sug.id)) {
-    const el = document.getElementById("inp-desc");
-    const pos = el ? el.selectionStart : null;
-    render();
-    const el2 = document.getElementById("inp-desc");
-    if (el2) { el2.focus(); if (pos !== null) { try { el2.setSelectionRange(pos, pos); } catch(e){} } }
-  }
-}
-
-function usarSugerencia() { setState({plantillaEnUso:state.sugerencia}); clearModalState(); }
-
 function gbpPreview() { if(!enModoGBP()||!state.gbpMode||state.moneda!=="Euros") return ""; const m=parseFloat(state.monto),r=parseFloat(state.gbpRate); return (m>0&&r>0)?`£${m} = € ${(Math.round(m*r*100)/100).toLocaleString("es-AR")}`:""; }
 function updateGbpPreview() { const el=document.getElementById("gbp-preview"); if(el) el.textContent=gbpPreview(); }
 function setGbpRate(v) { state.gbpRate=v; try{localStorage.setItem("gbp_rate",String(v));localStorage.setItem("gbp_rate_manual","1");}catch(e){} updateGbpPreview(); }
@@ -1868,55 +1821,13 @@ function agregarGasto() {
     showToast("✓ Gasto agregado");
   }
   saveAll();
-  setState({desc:"",titular:"",monto:"",fecha:hoy(),hora:horaAhora(),nota:"",categoriasSel:defaultCategoriaSel(),medio:defaultMedio(),subMedio:null,empresa:null,moneda:defaultMoneda(),cantCuotas:"",tcCuotas:false,pagador:null,sugerencia:null});
+  setState({desc:"",titular:"",monto:"",fecha:hoy(),hora:horaAhora(),nota:"",categoriasSel:defaultCategoriaSel(),medio:defaultMedio(),subMedio:null,empresa:null,moneda:defaultMoneda(),cantCuotas:"",tcCuotas:false,pagador:null});
 }
 
 function eliminarGasto(id) {
   state.gastos=state.gastos.filter(g=>String(g.id)!==String(id));
   state.deletedIds=[...(state.deletedIds||[]),id];
   saveAll(); render();
-}
-
-function clearModalState() {
-  delete state._modalDesc; delete state._modalTitular; delete state._modalMonto; delete state._modalMoneda;
-  delete state._modalFecha; delete state._modalMedio; delete state._modalSubMedio;
-  delete state._modalCats; delete state._modalNota; delete state._modalEmpresa;
-}
-function toggleCatModal(i) {
-  const c = state.categorias[i];
-  const sel = state._modalCats !== undefined ? state._modalCats : getCats(state.plantillaEnUso||{});
-  state._modalCats = sel.includes(c) ? sel.filter(x=>x!==c) : [...sel, c];
-  render();
-}
-
-function cerrarModal() { clearModalState(); setState({plantillaEnUso:null}); }
-
-function confirmarPlantilla() {
-  const p = state.plantillaEnUso;
-  const emp = state._modalEmpresa !== undefined ? state._modalEmpresa : p.empresa;
-  if(!emp) return showToast("⚠ Seleccioná una empresa");
-  const m = state._modalMonto !== undefined ? state._modalMonto : p.monto;
-  if(!m||parseFloat(m)<=0) return showToast("⚠ Ingresá un monto válido");
-  const medio = state._modalMedio !== undefined ? state._modalMedio : (p.medio||"").split(" · ")[0]||null;
-  const subM = state._modalSubMedio !== undefined ? state._modalSubMedio : (p.medio||"").split(" · ")[1]||null;
-  const catsFinal = state._modalCats !== undefined ? state._modalCats : getCats(p);
-  const nuevo = {
-    id:Date.now(), empresa:emp,
-    desc: state._modalDesc !== undefined ? state._modalDesc : p.desc,
-    titular: state._modalTitular !== undefined ? state._modalTitular : (p.titular||""),
-    monto: parseFloat(m),
-    moneda: state._modalMoneda !== undefined ? state._modalMoneda : (p.moneda||"ARS"),
-    fecha: state._modalFecha !== undefined ? state._modalFecha : hoy(),
-    medio: medioStr(medio,subM)||"No especificado",
-    categorias: catsFinal.length ? catsFinal : ["Sin categoría"],
-    nota: state._modalNota !== undefined ? state._modalNota : (p.nota||""),
-    updatedAt: Date.now(),
-  };
-  state.gastos = [...state.gastos, nuevo];
-  saveAll();
-  clearModalState();
-  setState({plantillaEnUso:null});
-  showToast("✓ Gasto agregado");
 }
 
 // Categorías
