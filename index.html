@@ -1061,7 +1061,7 @@ function buildModalEditarGasto() {
       <div class="field"><span class="label">Medio de pago</span>${buildMedioPicker(m,sm,"setEditMedio","setEditSubMedio")}</div>
       ${buildPagadorCollapsable(state._editPagador!==undefined?state._editPagador:(g.pagador||null), state._editPagadorAbierto, "abrirEditPagador", "setEditPagador")}
       ${(()=>{const eM2=m||"";const tcCuotasEdit=state._editTcCuotas!==undefined?state._editTcCuotas:!!(g.cantCuotas&&esTCMedio(eM2));const tcToggle=esTCMedio(eM2)?`<div class="field"><span class="label">Modalidad</span><div style="display:flex;gap:8px">${["Pago único","En cuotas"].map(op=>`<button onclick="state._editTcCuotas=${op==='En cuotas'};state._editCantCuotas=undefined;render()" style="flex:1;padding:8px;border-radius:8px;border:1px solid ${(op==='En cuotas')===tcCuotasEdit?'var(--accent)':'var(--border)'};background:${(op==='En cuotas')===tcCuotasEdit?'rgba(245,158,11,.12)':'var(--surface)'};color:${(op==='En cuotas')===tcCuotasEdit?'var(--accent)':'var(--muted)'};font-size:13px;cursor:pointer">${op}</button>`).join('')}</div></div>`:"";const showCuotas=esCuotasMode(eM2,tcCuotasEdit);const cuotasField=showCuotas?`<div class="row2"><div class="field"><span class="label">${eM2==="E-cheque"?"Cantidad de cheques":"Cantidad de cuotas"}</span><input type="number" min="1" step="1" value="${state._editCantCuotas!==undefined?state._editCantCuotas:(g.cantCuotas||"")}" oninput="state._editCantCuotas=this.value;render()" placeholder="Ej: 6"></div><div class="field"><span class="label">Monto por ${eM2==="E-cheque"?"cheque":"cuota"}</span><input type="text" readonly value="${(parseFloat(state._editMonto!==undefined?state._editMonto:g.monto)>0&&parseInt(state._editCantCuotas!==undefined?state._editCantCuotas:g.cantCuotas)>0)?(parseFloat(state._editMonto!==undefined?state._editMonto:g.monto)/parseInt(state._editCantCuotas!==undefined?state._editCantCuotas:g.cantCuotas)).toFixed(2):""}" style="background:var(--surface);color:var(--muted);cursor:default" placeholder="Auto"></div></div>`:"";return tcToggle+cuotasField;})()}
-      <div class="field"><span class="label">Nota</span><input value="${esc(eNota)}" oninput="state._editNota=this.value" placeholder="Aclaración..."></div>
+      ${buildNotaCollapsable(eNota, state._editNotaAbierta, "abrirEditNota", "state._editNota=this.value")}
       <button class="btn-primary" onclick="guardarEdicion()">Guardar cambios</button>
       <button onclick="cerrarEditarGasto()" style="width:100%;padding:10px;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:13px;cursor:pointer;margin-top:8px">Cancelar</button>
     </div>
@@ -1116,7 +1116,7 @@ function buildCargar() {
     ${buildPagadorCollapsable(state.pagador, state._pagadorAbierto, "abrirPagador", "setPagador")}
     ${esTCMedio(state.medio)?`<div class="field"><span class="label">Modalidad</span><div style="display:flex;gap:8px">${["Pago único","En cuotas"].map(op=>`<button onclick="setState({tcCuotas:${op==='En cuotas'},cantCuotas:''})" style="flex:1;padding:8px;border-radius:8px;border:1px solid ${(op==='En cuotas')===state.tcCuotas?'var(--accent)':'var(--border)'};background:${(op==='En cuotas')===state.tcCuotas?'rgba(245,158,11,.12)':'var(--surface)'};color:${(op==='En cuotas')===state.tcCuotas?'var(--accent)':'var(--muted)'};font-size:13px;cursor:pointer">${op}</button>`).join('')}</div></div>`:""}
     ${esCuotasMode(state.medio,state.tcCuotas)?`<div class="row2"><div class="field"><span class="label">${state.medio==="E-cheque"?"Cantidad de cheques":"Cantidad de cuotas"}</span><input type="number" min="1" step="1" value="${state.cantCuotas}" oninput="setState({cantCuotas:this.value},false)" placeholder="Ej: 6"></div><div class="field"><span class="label">Monto por ${state.medio==="E-cheque"?"cheque":"cuota"}</span><input type="text" readonly value="${(parseFloat(state.monto)>0&&parseInt(state.cantCuotas)>0)?(parseFloat(state.monto)/parseInt(state.cantCuotas)).toFixed(2):""}" style="background:var(--surface);color:var(--muted);cursor:default" placeholder="Auto"></div></div>`:""}
-    <div class="field"><span class="label">Nota (opcional)</span><input value="${esc(state.nota)}" oninput="setState({nota:this.value},false)" placeholder="Aclaración..."></div>
+    ${buildNotaCollapsable(state.nota, state._notaAbierta, "abrirNota", "setState({nota:this.value},false)")}
     <button class="btn-primary" onclick="agregarGasto()">${state.splitMode?`Agregar ${state.splitParts.length} gastos divididos`:"Agregar gasto"}</button>
   </div>`;
 }
@@ -1158,7 +1158,7 @@ function buildIA() {
       <div class="field"><span class="label">Medio de pago</span>${buildMedioPicker(eMed,eSub,"setIAMedio","setIASubMedio")}</div>
       ${buildPagadorCollapsable(state._iaPagador!==undefined?state._iaPagador:null, state._iaPagadorAbierto, "abrirIAPagador", "setIAPagador")}
       ${(()=>{const tcCuotasIA=state._iaTcCuotas!==undefined?state._iaTcCuotas:false;const tcToggleIA=esTCMedio(eMed)?`<div class="field"><span class="label">Modalidad</span><div style="display:flex;gap:8px">${["Pago único","En cuotas"].map(op=>`<button onclick="state._iaTcCuotas=${op==='En cuotas'};state._iaCantCuotas=undefined;render()" style="flex:1;padding:8px;border-radius:8px;border:1px solid ${(op==='En cuotas')===tcCuotasIA?'var(--accent)':'var(--border)'};background:${(op==='En cuotas')===tcCuotasIA?'rgba(245,158,11,.12)':'var(--surface)'};color:${(op==='En cuotas')===tcCuotasIA?'var(--accent)':'var(--muted)'};font-size:13px;cursor:pointer">${op}</button>`).join('')}</div></div>`:"";const showCuotasIA=esCuotasMode(eMed,tcCuotasIA);const cuotasFieldIA=showCuotasIA?`<div class="row2"><div class="field"><span class="label">${eMed==="E-cheque"?"Cantidad de cheques":"Cantidad de cuotas"}</span><input type="number" min="1" step="1" value="${state._iaCantCuotas!==undefined?state._iaCantCuotas:""}" oninput="state._iaCantCuotas=this.value;render()" placeholder="Ej: 6"></div><div class="field"><span class="label">Monto por ${eMed==="E-cheque"?"cheque":"cuota"}</span><input type="text" readonly value="${(parseFloat(eM)>0&&parseInt(state._iaCantCuotas)>0)?(parseFloat(eM)/parseInt(state._iaCantCuotas)).toFixed(2):""}" style="background:var(--surface);color:var(--muted);cursor:default" placeholder="Auto"></div></div>`:"";return tcToggleIA+cuotasFieldIA;})()} 
-      <div class="field"><span class="label">Nota</span><input value="${esc(eNot)}" oninput="state._iaNota=this.value" placeholder="Aclaración..."></div>
+      ${buildNotaCollapsable(eNot, state._iaNotaAbierta, "abrirIANota", "state._iaNota=this.value")}
       ${state.iaSplitMode?`<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">${state.iaSplitParts.map(p=>`<div style="font-size:13px;line-height:1.9"><span style="color:${EMP[p.empresa]?.text||"var(--muted)"}>${p.empresa||"?"}</span><span style="color:var(--muted)"> → ${p.pct}% = </span>${eM?`${eMon} ${Number(parseFloat(eM)*p.pct/100).toLocaleString("es-AR")}`:"—"}</div>`).join("")}</div>`:""}
       <button class="btn-primary" onclick="confirmarIA()" style="margin-top:4px">${state.iaSplitMode?`Confirmar ${state.iaSplitParts.length} gastos`:"Confirmar y agregar"}</button>
       <button onclick="cancelarIA()" style="width:100%;padding:10px;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:13px;cursor:pointer;margin-top:8px">Cancelar</button>
@@ -1802,6 +1802,15 @@ function buildPagadorCollapsable(valor, abierto, abrirFn, gridFn) {
   }
   return `<div class="field"><span class="label">Pagado por <span style="color:var(--muted);font-weight:400;text-transform:none">(opcional)</span></span>${buildEmpGrid(valor,gridFn)}</div>`;
 }
+function abrirNota() { state._notaAbierta=true; render(); }
+function abrirIANota() { state._iaNotaAbierta=true; render(); }
+function abrirEditNota() { state._editNotaAbierta=true; render(); }
+function buildNotaCollapsable(valor, abierto, abrirFn, oninputExpr) {
+  if (!valor && !abierto) {
+    return `<div class="field"><button onclick="${abrirFn}()" style="background:none;border:none;color:var(--muted);font-size:12px;text-decoration:underline;cursor:pointer;padding:0">+ Nota</button></div>`;
+  }
+  return `<div class="field"><span class="label">Nota <span style="color:var(--muted);font-weight:400;text-transform:none">(opcional)</span></span><input value="${esc(valor)}" oninput="${oninputExpr}" placeholder="Aclaración..."></div>`;
+}
 function updateSplit(i,field,val) { const p=[...state.splitParts]; p[i]={...p[i],[field]:val}; setState({splitParts:p}); }
 function updateSplitPct(i,val) { state.splitParts[i]={...state.splitParts[i],pct:val}; updateSplitTotalDisplay('split-total-cargar', state.splitParts); }
 function addSplit() { setState({splitParts:[...state.splitParts,{empresa:null,pct:0}]}); }
@@ -1843,7 +1852,7 @@ function agregarGasto() {
     showToast("✓ Gasto agregado");
   }
   saveAll();
-  setState({desc:"",titular:"",monto:"",fecha:hoy(),hora:horaAhora(),nota:"",categoriasSel:defaultCategoriaSel(),medio:defaultMedio(),subMedio:null,empresa:null,moneda:defaultMoneda(),cantCuotas:"",tcCuotas:false,pagador:null,_pagadorAbierto:false});
+  setState({desc:"",titular:"",monto:"",fecha:hoy(),hora:horaAhora(),nota:"",categoriasSel:defaultCategoriaSel(),medio:defaultMedio(),subMedio:null,empresa:null,moneda:defaultMoneda(),cantCuotas:"",tcCuotas:false,pagador:null,_pagadorAbierto:false,_notaAbierta:false});
 }
 
 function eliminarGasto(id) {
@@ -1981,7 +1990,7 @@ function toggleCatIA(i){
 }
 function setIASubMedio(s){state._iaSubMedio=s;render();}
 function cancelarIA(){
-  ["_iaDesc","_iaTitular","_iaMonto","_iaMoneda","_iaFecha","_iaMedio","_iaSubMedio","_iaCats","_iaNota","_iaTcCuotas","_iaCantCuotas","_iaPagador","_iaPagadorAbierto","_iaGbp","_iaHora"].forEach(k=>delete state[k]);
+  ["_iaDesc","_iaTitular","_iaMonto","_iaMoneda","_iaFecha","_iaMedio","_iaSubMedio","_iaCats","_iaNota","_iaNotaAbierta","_iaTcCuotas","_iaCantCuotas","_iaPagador","_iaPagadorAbierto","_iaGbp","_iaHora"].forEach(k=>delete state[k]);
   setState({iaResult:null});
 }
 function confirmarIA() {
@@ -2024,7 +2033,7 @@ function confirmarIA() {
     showToast("✓ Gasto agregado");
   }
   saveAll();
-  ["_iaDesc","_iaTitular","_iaMonto","_iaMoneda","_iaFecha","_iaMedio","_iaSubMedio","_iaCats","_iaNota","_iaTcCuotas","_iaCantCuotas","_iaPagador","_iaPagadorAbierto","_iaGbp","_iaHora"].forEach(k=>delete state[k]);
+  ["_iaDesc","_iaTitular","_iaMonto","_iaMoneda","_iaFecha","_iaMedio","_iaSubMedio","_iaCats","_iaNota","_iaNotaAbierta","_iaTcCuotas","_iaCantCuotas","_iaPagador","_iaPagadorAbierto","_iaGbp","_iaHora"].forEach(k=>delete state[k]);
   setState({iaResult:null,imgB64:null,imgPreview:null,textoLibre:""});
 }
 
@@ -2047,7 +2056,7 @@ function editarGasto(id) {
   else { console.warn("editarGasto: no se encontró id="+id, state.gastos.map(x=>x.id)); }
 }
 function clearEditState() {
-  ["_editDesc","_editTitular","_editMonto","_editMoneda","_editFecha","_editMedio","_editSubMedio","_editCats","_editNota","_editEmpresa","_editCantCuotas","_editTcCuotas","_editPagador","_editPagadorAbierto","_editHora"].forEach(k=>delete state[k]);
+  ["_editDesc","_editTitular","_editMonto","_editMoneda","_editFecha","_editMedio","_editSubMedio","_editCats","_editNota","_editNotaAbierta","_editEmpresa","_editCantCuotas","_editTcCuotas","_editPagador","_editPagadorAbierto","_editHora"].forEach(k=>delete state[k]);
 }
 function toggleCatEdit(i) {
   const c = state.categorias[i];
