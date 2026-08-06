@@ -2585,15 +2585,19 @@ async function exportarExcel(soloEmp) {
   const catsProy = g => getCats(g).filter(c => esCatProyecto(c));
   const catsTipo = g => getCats(g).filter(c => !esCatProyecto(c));
   const tipoCatsGlobal = state.categorias.filter(c => !esCatProyecto(c));
-  const catHeaders = mp => [
+  // Solo columnas de Tipo de gasto que estén realmente usadas en ESTA hoja (si no, con muchas
+  // categorías el Excel termina interminable hacia la derecha). Proyecto/Viaje sí se exporta
+  // siempre (aunque quede vacía) porque es la principal.
+  const tipoCatsUsadas = gastosArr => tipoCatsGlobal.filter(c => gastosArr.some(g => catsTipo(g).includes(c)));
+  const catHeaders = (mp, tipoCats) => [
     ...Array.from({length:mp},(_,i)=> mp<=1 ? "Categoría Proyecto/Viaje" : `Categoría Proyecto/Viaje ${i+1}`),
-    ...tipoCatsGlobal.map(c => `Cat: ${c}`),
+    ...tipoCats.map(c => `Cat: ${c}`),
   ];
-  const buildHeaders = mp => ["Fecha","Empresa","Titular/Comercio","Descripción",...catHeaders(mp),"Medio de pago","Subtipo","Moneda","Monto Total","Cant. Cuotas","Monto/Cuota","Nota","Pagado por","Hora","ID"];
-  const toRow = (g,mp) => {
+  const buildHeaders = (mp, tipoCats) => ["Fecha","Empresa","Titular/Comercio","Descripción",...catHeaders(mp,tipoCats),"Medio de pago","Subtipo","Moneda","Monto Total","Cant. Cuotas","Monto/Cuota","Nota","Pagado por","Hora","ID"];
+  const toRow = (g,mp,tipoCats) => {
     const proyCols = Array.from({length:mp},(_,i)=>catsProy(g)[i]||"");
     const gTipo = catsTipo(g);
-    const tipoCols = tipoCatsGlobal.map(c => gTipo.includes(c) ? "X" : "");
+    const tipoCols = tipoCats.map(c => gTipo.includes(c) ? "X" : "");
     return [g.fecha, g.empresa, g.titular||"", g.desc, ...proyCols, ...tipoCols, ...splitMedio(g), g.moneda||"ARS", g.monto, g.cantCuotas||"", g.montoCuota||"", g.nota||"", g.pagador||"", g.hora||"", String(g.id)];
   };
 
@@ -2612,11 +2616,12 @@ async function exportarExcel(soloEmp) {
   const maxProyGlobal = Math.max(1, ...state.gastos.map(g=>catsProy(g).length));
   let ranges = null;
   const addSheet = (nombreHoja, gastosArr) => {
-    const headers = buildHeaders(maxProyGlobal);
-    const rows = gastosArr.map(g=>toRow(g,maxProyGlobal));
+    const tipoCats = tipoCatsUsadas(gastosArr);
+    const headers = buildHeaders(maxProyGlobal, tipoCats);
+    const rows = gastosArr.map(g=>toRow(g,maxProyGlobal,tipoCats));
     const ws = wb.addWorksheet(nombreHoja);
     ws.addRow(headers); rows.forEach(r=>ws.addRow(r));
-    const numCatCols = maxProyGlobal + tipoCatsGlobal.length;
+    const numCatCols = maxProyGlobal + tipoCats.length;
     aplicarEstilosHoja(ws, rows, numCatCols, 0, true, maxProyGlobal);
     if (!ranges) ranges = crearHojaListas(wb);
     aplicarValidacionesHoja(ws, numCatCols, ranges, undefined, undefined, undefined, maxProyGlobal);
@@ -2653,16 +2658,20 @@ async function exportarBusqueda() {
   const catsProy = g => getCats(g).filter(c => esCatProyecto(c));
   const catsTipo = g => getCats(g).filter(c => !esCatProyecto(c));
   const tipoCatsGlobal = state.categorias.filter(c => !esCatProyecto(c));
+  // Solo las categorías de Tipo de gasto que están usadas en estos resultados (si no, con
+  // muchas categorías el Excel queda interminable hacia la derecha). Proyecto/Viaje se exporta
+  // siempre, aunque quede vacía.
+  const tipoCats = tipoCatsGlobal.filter(c => sorted.some(g => catsTipo(g).includes(c)));
   const maxProy = Math.max(1, ...sorted.map(g=>catsProy(g).length));
   const catHeaders = [
     ...Array.from({length:maxProy},(_,i)=> maxProy<=1 ? "Categoría Proyecto/Viaje" : `Categoría Proyecto/Viaje ${i+1}`),
-    ...tipoCatsGlobal.map(c => `Cat: ${c}`),
+    ...tipoCats.map(c => `Cat: ${c}`),
   ];
   const headers = ["Fecha","Empresa","Titular/Comercio","Descripción",...catHeaders,"Medio de pago","Subtipo","Moneda","Monto Total","Cant. Cuotas","Monto/Cuota","Nota","Pagado por","Hora","ID"];
   const rows = sorted.map(g=>{
     const proyCols = Array.from({length:maxProy},(_,i)=>catsProy(g)[i]||"");
     const gTipo = catsTipo(g);
-    const tipoCols = tipoCatsGlobal.map(c => gTipo.includes(c) ? "X" : "");
+    const tipoCols = tipoCats.map(c => gTipo.includes(c) ? "X" : "");
     return [g.fecha, g.empresa, g.titular||"", g.desc, ...proyCols, ...tipoCols, ...splitMedio(g), g.moneda||"ARS", g.monto, g.cantCuotas||"", g.montoCuota||"", g.nota||"", g.pagador||"", g.hora||"", String(g.id)];
   });
   const wb = new ExcelJS.Workbook();
@@ -2670,7 +2679,7 @@ async function exportarBusqueda() {
   const labelHoja = (state.busqueda||state.filtroBEmp||(state.filtroBCats&&state.filtroBCats.join("+"))||"busqueda").replace(/[^a-zA-Z0-9 áéíóúñÁÉÍÓÚÑ+]/g,"").trim().slice(0,28) || "Busqueda";
   const ws = wb.addWorksheet(labelHoja);
   ws.addRow(headers); rows.forEach(r=>ws.addRow(r));
-  const numCatCols = maxProy + tipoCatsGlobal.length;
+  const numCatCols = maxProy + tipoCats.length;
   aplicarEstilosHoja(ws, rows, numCatCols, 0, true, maxProy);
   const ranges = crearHojaListas(wb);
   aplicarValidacionesHoja(ws, numCatCols, ranges, undefined, undefined, undefined, maxProy);
