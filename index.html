@@ -554,9 +554,14 @@ async function syncToDrive() {
       state.categorias = mergedCats;
       localStorage.setItem("cats_v5", JSON.stringify(state.categorias));
 
-      // Marca de "proyecto": unión de local + Drive, sin las eliminadas y solo las que existen
+      // Marca de "proyecto": si se modificó localmente después del último sync, local gana
+      // (evita que un toggle recién hecho se pise con la unión de lo que todavía está en Drive)
       const driveProy = driveData.catsProyecto || [];
-      state.catsProyecto = [...new Set([...(state.catsProyecto||[]), ...driveProy])]
+      const localProyModifiedAt = parseInt(localStorage.getItem("cats_proyecto_modified_at") || "0");
+      const localProyIsNewer = localProyModifiedAt > driveLastSync;
+      state.catsProyecto = (localProyIsNewer
+        ? (state.catsProyecto || [])
+        : [...new Set([...(state.catsProyecto||[]), ...driveProy])])
         .filter(c => !allDeletedCats.includes(c) && mergedCats.includes(c));
       localStorage.setItem("cats_proyecto_v1", JSON.stringify(state.catsProyecto));
     }
@@ -1870,6 +1875,7 @@ function toggleCatProyecto(i) {
   if (!c) return;
   const lista = state.catsProyecto || [];
   state.catsProyecto = lista.includes(c) ? lista.filter(x=>x!==c) : [...lista, c];
+  localStorage.setItem("cats_proyecto_modified_at", String(Date.now()));
   saveAll(); render();
 }
 function delCat(i) {
@@ -1897,7 +1903,7 @@ function editCat(i) {
     replaceCatInGastos(oldName, newName);
   }
   state.categorias = state.categorias.map((c,j) => j===i ? newName : c);
-  if (esCatProyecto(oldName)) state.catsProyecto = [...new Set([...(state.catsProyecto||[]).filter(c=>c!==oldName), newName])];
+  if (esCatProyecto(oldName)) { state.catsProyecto = [...new Set([...(state.catsProyecto||[]).filter(c=>c!==oldName), newName])]; localStorage.setItem("cats_proyecto_modified_at", String(Date.now())); }
   // Tombstone del nombre viejo: si no se marca como eliminado, el próximo sync con Drive
   // (que todavía tiene el nombre viejo) lo trae de vuelta junto al nuevo.
   state.deletedCategorias = [...new Set([...state.deletedCategorias, oldName])].filter(c=>c!==newName);
