@@ -156,6 +156,7 @@ let state = {
   gastos: sanearIds(load("gastos_v5", [])),
   categorias: load("cats_v5", CATEGORIAS_DEFAULT),
   catsProyecto: load("cats_proyecto_v1", []),
+  catsArchivadas: load("cats_archivadas_v1", []),
   deletedCategorias: load("deleted_cats_v1", []),
   // form
   empresa: null, desc:"", titular:"", monto:"", moneda:defaultMoneda(), fecha:hoy(), hora:horaAhora(),
@@ -211,6 +212,7 @@ function saveAll() {
   localStorage.setItem("gastos_v5", JSON.stringify(state.gastos));
   localStorage.setItem("cats_v5", JSON.stringify(state.categorias));
   localStorage.setItem("cats_proyecto_v1", JSON.stringify(state.catsProyecto));
+  localStorage.setItem("cats_archivadas_v1", JSON.stringify(state.catsArchivadas));
   localStorage.setItem("local_modified", String(Date.now()));
   syncToDrive();
 }
@@ -571,6 +573,16 @@ async function syncToDrive() {
         : [...new Set([...(state.catsProyecto||[]), ...driveProy])])
         .filter(c => !allDeletedCats.includes(c) && mergedCats.includes(c));
       localStorage.setItem("cats_proyecto_v1", JSON.stringify(state.catsProyecto));
+
+      // Archivadas: mismo patrón — si se modificó localmente después del último sync, local gana
+      const driveArch = driveData.catsArchivadas || [];
+      const localArchModifiedAt = parseInt(localStorage.getItem("cats_archivadas_modified_at") || "0");
+      const localArchIsNewer = localArchModifiedAt > driveLastSync;
+      state.catsArchivadas = (localArchIsNewer
+        ? (state.catsArchivadas || [])
+        : [...new Set([...(state.catsArchivadas||[]), ...driveArch])])
+        .filter(c => !allDeletedCats.includes(c) && mergedCats.includes(c));
+      localStorage.setItem("cats_archivadas_v1", JSON.stringify(state.catsArchivadas));
     }
 
     // 3. Backup diario y subir el resultado mergeado
@@ -578,6 +590,7 @@ async function syncToDrive() {
       gastos: state.gastos,
       categorias: state.categorias,
       catsProyecto: state.catsProyecto,
+      catsArchivadas: state.catsArchivadas,
       deletedIds: state.deletedIds,
       deletedCategorias: state.deletedCategorias,
       lastSync: new Date().toISOString()
@@ -933,7 +946,12 @@ function replaceCatInGastos(oldName, newName) {
 }
 function buildCatMultiPicker(selected, toggleFn) {
   const sel = selected || [];
-  const {proyectos, tipos} = catsPorEje();
+  // Las archivadas no se ofrecen como opción nueva (para no ensuciar la carga de gastos con
+  // viajes/categorías ya cerrados), pero si el gasto ya la tiene asignada se sigue mostrando
+  // para poder verla o sacarla.
+  const { proyectos: proyAll, tipos: tipoAll } = catsPorEje();
+  const visible = ({cat}) => !esCatArchivada(cat) || sel.includes(cat);
+  const proyectos = proyAll.filter(visible), tipos = tipoAll.filter(visible);
   const btn = ({cat,idx}) => {
     const active = sel.includes(cat);
     return `<button onclick="${toggleFn}(${idx})" style="padding:8px 6px;border-radius:8px;border:2px solid ${active?"var(--accent)":"var(--border)"};background:${active?"rgba(245,158,11,.12)":"transparent"};color:${active?"var(--accent)":"var(--muted)"};font-size:12px;font-weight:${active?600:400};cursor:pointer">${active?"✓ ":""}${esc(cat)}</button>`;
@@ -1394,11 +1412,13 @@ function buildCatsListHTML() {
   const {proyectos, tipos} = catsPorEje();
   const item = ({cat,idx}) => {
     const esProy = esCatProyecto(cat);
+    const esArch = esCatArchivada(cat);
     return `
-    <div class="cat-item" draggable="true" data-idx="${idx}" data-proj="${esProy?1:0}">
+    <div class="cat-item" draggable="true" data-idx="${idx}" data-proj="${esProy?1:0}" style="${esArch?"opacity:.55":""}">
       <span class="cat-drag-handle" style="color:var(--muted);font-size:18px;padding:0 10px 0 0;cursor:grab;touch-action:none;user-select:none">⠿</span>
-      <span style="flex:1;font-size:13px">${esc(cat)}</span>
+      <span style="flex:1;font-size:13px;${esArch?"text-decoration:line-through":""}">${esc(cat)}${esArch?` <span style="font-size:10px;font-family:monospace;color:var(--muted);text-decoration:none">(archivada)</span>`:""}</span>
       <button onclick="toggleCatProyecto(${idx})" title="${esProy?"Pasar a tipo de gasto":"Marcar como proyecto/viaje"}" style="background:none;border:none;color:${esProy?"var(--accent)":"var(--muted)"};font-size:13px;opacity:${esProy?1:.45}">◈</button>
+      <button onclick="toggleCatArchivada(${idx})" title="${esArch?"Desarchivar (volver a ofrecer en gastos nuevos)":"Archivar (dejar de ofrecer en gastos nuevos, sin tocar los ya cargados)"}" style="background:none;border:none;color:${esArch?"var(--accent)":"var(--muted)"};font-size:13px;opacity:${esArch?1:.45}">🗄</button>
       <button onclick="editCat(${idx})" style="background:none;border:none;color:var(--muted);font-size:14px">✎</button>
       <button onclick="delCat(${idx})" style="background:none;border:none;color:var(--muted);font-size:14px">🗑</button>
     </div>`;
@@ -1418,7 +1438,7 @@ function buildCatsListHTML() {
 
 function buildCategoriasTab() {
   return `<div class="panel">
-    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Arrastrá ⠿ para reordenar (dentro de cada sección). ◈ marca una categoría como proyecto/viaje. ✎ renombra y actualiza todos los gastos.</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Arrastrá ⠿ para reordenar (dentro de cada sección). ◈ marca una categoría como proyecto/viaje. 🗄 la archiva: deja de ofrecerse en gastos nuevos, pero sigue intacta en los ya cargados. ✎ renombra y actualiza todos los gastos.</div>
     ${buildCatsListHTML()}
   </div>`;
 }
@@ -1891,6 +1911,15 @@ function toggleCatProyecto(i) {
   localStorage.setItem("cats_proyecto_modified_at", String(Date.now()));
   saveAll(); render();
 }
+function esCatArchivada(c) { return (state.catsArchivadas||[]).includes(c); }
+function toggleCatArchivada(i) {
+  const c = state.categorias[i];
+  if (!c) return;
+  const lista = state.catsArchivadas || [];
+  state.catsArchivadas = lista.includes(c) ? lista.filter(x=>x!==c) : [...lista, c];
+  localStorage.setItem("cats_archivadas_modified_at", String(Date.now()));
+  saveAll(); render();
+}
 function delCat(i) {
   const removed = state.categorias[i];
   if (!removed) return;
@@ -1901,6 +1930,7 @@ function delCat(i) {
   if (!confirm(msg)) return;
   state.categorias = state.categorias.filter((_,j)=>j!==i);
   state.catsProyecto = (state.catsProyecto||[]).filter(c=>c!==removed);
+  state.catsArchivadas = (state.catsArchivadas||[]).filter(c=>c!==removed);
   state.deletedCategorias = [...new Set([...state.deletedCategorias, removed])];
   localStorage.setItem("deleted_cats_v1", JSON.stringify(state.deletedCategorias));
   saveAll(); render();
@@ -1917,6 +1947,7 @@ function editCat(i) {
   }
   state.categorias = state.categorias.map((c,j) => j===i ? newName : c);
   if (esCatProyecto(oldName)) { state.catsProyecto = [...new Set([...(state.catsProyecto||[]).filter(c=>c!==oldName), newName])]; localStorage.setItem("cats_proyecto_modified_at", String(Date.now())); }
+  if (esCatArchivada(oldName)) { state.catsArchivadas = [...new Set([...(state.catsArchivadas||[]).filter(c=>c!==oldName), newName])]; localStorage.setItem("cats_archivadas_modified_at", String(Date.now())); }
   // Tombstone del nombre viejo: si no se marca como eliminado, el próximo sync con Drive
   // (que todavía tiene el nombre viejo) lo trae de vuelta junto al nuevo.
   state.deletedCategorias = [...new Set([...state.deletedCategorias, oldName])].filter(c=>c!==newName);
