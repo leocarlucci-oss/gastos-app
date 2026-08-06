@@ -2156,7 +2156,7 @@ function fmtMonedaExcel(moneda) {
   return '"$ "#,##0.00';
 }
 
-function aplicarEstilosHoja(ws, rows, numCatCols, extraCols) {
+function aplicarEstilosHoja(ws, rows, numCatCols, extraCols, hasId) {
   numCatCols = numCatCols || 1;
   const off = extraCols || 0;                 // columnas extra insertadas después de "Empresa"
   const colMonedaIdx0 = 6 + numCatCols + off; // índice 0-based dentro del array de la fila
@@ -2203,6 +2203,13 @@ function aplicarEstilosHoja(ws, rows, numCatCols, extraCols) {
   widths.forEach((w,i) => { ws.getColumn(i+1).width = w; });
   ws.views = [{ state:"frozen", ySplit:1 }];
   ws.autoFilter = { from:{row:1,column:1}, to:{row:1,column:totalCols} };
+  // Columna ID: identifica cada gasto para poder reimportar ediciones (ej. cambio de categoría)
+  // sin duplicar. Se oculta para no invitar a tocarla a mano.
+  if (hasId) {
+    const idCol = ws.getColumn(totalCols + 1);
+    idCol.width = 12;
+    idCol.hidden = true;
+  }
 }
 
 function colLetter(n) {
@@ -2312,6 +2319,10 @@ async function handleImportExcel(input) {
 
     const nuevos = [];
     const errores = [];
+    const actualizaciones = [];   // filas con ID que matchea un gasto existente y trae cambios
+    const sinCambiosIds = [];     // filas con ID que matchea pero sin diferencias
+    const noEncontrados = [];     // filas con ID que ya no existe (el gasto se borró)
+    const _byId = new Map(state.gastos.map(g => [String(g.id), g]));
 
     hojas.forEach(ws => {
       const headerRow = ws.getRow(1);
@@ -2371,6 +2382,32 @@ async function handleImportExcel(input) {
         const medio = medioStr(medioBase||null, subtipo||null) || medioBase || "No especificado";
         const nota = String(get(row,"nota")||"").trim();
 
+        // Si la fila trae ID (columna oculta que agregamos al exportar), es una edición de un
+        // gasto ya cargado (ej. cambio de categoría) y no un alta nueva. Actualizamos in-place
+        // en vez de compararla por fecha/monto/medio, así nunca se duplica. No tocamos monto ni
+        // cuotas acá: una edición masiva pensada para categoría/descripción no debería poder
+        // pisar montos por un error de tipeo en el Excel.
+        const idRaw = String(get(row,"id")||"").trim();
+        if (idRaw) {
+          const existente = _byId.get(idRaw);
+          if (!existente) {
+            noEncontrados.push(`Hoja "${ws.name}" fila ${r}: ID ${idRaw} no corresponde a ningún gasto (¿se borró?) — se omite`);
+            continue;
+          }
+          const cambios = {
+            titular, desc,
+            categorias: categorias.length ? categorias : ["Sin categoría"],
+            medio, moneda, fecha, hora, nota, pagador,
+          };
+          if (!isSplit && empresa) cambios.empresa = empresa;
+          const _norm = v => Array.isArray(v) ? JSON.stringify([...v].sort()) : (v ?? "");
+          const _valorActual = k => k === "categorias" ? getCats(existente) : existente[k];
+          const huboCambio = Object.keys(cambios).some(k => _norm(_valorActual(k)) !== _norm(cambios[k]));
+          if (huboCambio) actualizaciones.push({ existente, cambios });
+          else sinCambiosIds.push(idRaw);
+          continue;
+        }
+
         if (isSplit) {
           const groupId = Date.now() + nuevos.length;
           splitPartes.forEach((p,i) => {
@@ -2415,9 +2452,13 @@ async function handleImportExcel(input) {
       }
     });
 
-    if (!nuevos.length) {
-      if (errores.length) console.warn("Errores de importación:", errores);
-      showToast(errores.length ? `⚠ No se importó nada (${errores.length} filas con error, ver consola)` : "⚠ El archivo no tiene filas para importar");
+    if (!nuevos.length && !actualizaciones.length) {
+      if (errores.length || noEncontrados.length) console.warn("Errores de importación:", errores, noEncontrados);
+      const partes = [];
+      if (sinCambiosIds.length) partes.push(`${sinCambiosIds.length} sin cambios`);
+      if (noEncontrados.length) partes.push(`${noEncontrados.length} con ID no encontrado`);
+      if (errores.length) partes.push(`${errores.length} con error`);
+      showToast(partes.length ? `⚠ Nada para importar (${partes.join(", ")}, ver consola)` : "⚠ El archivo no tiene filas para importar");
       return;
     }
 
@@ -2431,17 +2472,33 @@ async function handleImportExcel(input) {
       `• ${nuevo.fecha} · ${nuevo.empresa} · ${fmtMonto(nuevo.monto, nuevo.moneda)} · ${nuevo.titular||nuevo.desc}`
       + `\n   ya existe como: "${existente.titular||existente.desc}"${existente.nota?` (${existente.nota})`:""}`);
     if (_dups) console.warn("Gastos omitidos por duplicado:", _dupPares);
-    if(!_add.length){ alert(`Todo ya estaba cargado (${_dups} duplicado${_dups!==1?"s":""}):\n\n${_detalleDup.join("\n")}`); return; }
-    const msg = `¿Importar ${_add.length} gasto${_add.length!==1?"s":""}${_dups?` · ${_dups} ya cargado${_dups!==1?"s":""} (omitido${_dups!==1?"s":""})`:""}?`
-      + (_dups ? `\n\nOmitido${_dups!==1?"s":""} por estar ya cargado${_dups!==1?"s":""}:\n${_detalleDup.slice(0,10).join("\n")}${_dups>10?`\n… y ${_dups-10} más (ver consola)`:""}` : "")
-      + (errores.length ? `\n\n${errores.length} fila${errores.length!==1?"s":""} se van a omitir por datos inválidos (detalle en la consola).` : "");
+
+    if (!_add.length && !actualizaciones.length) {
+      const partes = [];
+      if (_dups) partes.push(`${_dups} duplicado${_dups!==1?"s":""}`);
+      if (sinCambiosIds.length) partes.push(`${sinCambiosIds.length} sin cambios`);
+      if (noEncontrados.length) partes.push(`${noEncontrados.length} con ID no encontrado`);
+      alert(`Nada nuevo para importar${partes.length?` (${partes.join(", ")})`:""}${_dups?`:\n\n${_detalleDup.join("\n")}`:""}`);
+      return;
+    }
+
+    const _msgPartes = [];
+    if (_add.length) _msgPartes.push(`${_add.length} gasto${_add.length!==1?"s":""} nuevo${_add.length!==1?"s":""}`);
+    if (actualizaciones.length) _msgPartes.push(`${actualizaciones.length} actualizado${actualizaciones.length!==1?"s":""} (categoría/otros campos)`);
+    let msg = `¿Importar? ${_msgPartes.join(" · ")}`;
+    if (_dups) msg += `\n${_dups} ya cargado${_dups!==1?"s":""} (se omite${_dups!==1?"n":""} por duplicado)`;
+    if (sinCambiosIds.length) msg += `\n${sinCambiosIds.length} sin cambios`;
+    if (noEncontrados.length) msg += `\n${noEncontrados.length} con ID que ya no existe (se omite${noEncontrados.length!==1?"n":""})`;
+    if (_dups) msg += `\n\nOmitido${_dups!==1?"s":""} por estar ya cargado${_dups!==1?"s":""}:\n${_detalleDup.slice(0,10).join("\n")}${_dups>10?`\n… y ${_dups-10} más (ver consola)`:""}`;
+    if (errores.length) msg += `\n\n${errores.length} fila${errores.length!==1?"s":""} se van a omitir por datos inválidos (detalle en la consola).`;
     if (!confirm(msg)) return;
 
     state.gastos = [...state.gastos, ..._add];
+    actualizaciones.forEach(({existente, cambios}) => { Object.assign(existente, cambios, {updatedAt: Date.now()}); });
 
     // Registrar categorías nuevas que vengan del Excel y todavía no estén en la lista
     const catsNuevas = [];
-    _add.forEach(g => getCats(g).forEach(c => {
+    [..._add, ...actualizaciones.map(a=>a.cambios)].forEach(g => getCats(g).forEach(c => {
       if (c && c !== "Sin categoría" && !state.categorias.includes(c) && !catsNuevas.includes(c)) catsNuevas.push(c);
     }));
     if (catsNuevas.length) {
@@ -2456,8 +2513,13 @@ async function handleImportExcel(input) {
 
     saveAll();
     render();
-    if (errores.length) console.warn("Filas omitidas en la importación:", errores);
-    showToast(`✓ ${_add.length} gastos importados${_dups?` · ${_dups} duplicado${_dups!==1?"s":""} omitido${_dups!==1?"s":""}`:""}${errores.length?` (${errores.length} omitidos)`:""}`);
+    if (errores.length || noEncontrados.length) console.warn("Filas omitidas en la importación:", errores, noEncontrados);
+    const _resumen = [];
+    if (_add.length) _resumen.push(`${_add.length} agregado${_add.length!==1?"s":""}`);
+    if (actualizaciones.length) _resumen.push(`${actualizaciones.length} actualizado${actualizaciones.length!==1?"s":""}`);
+    if (_dups) _resumen.push(`${_dups} duplicado${_dups!==1?"s":""} omitido${_dups!==1?"s":""}`);
+    if (errores.length) _resumen.push(`${errores.length} con error`);
+    showToast(`✓ ${_resumen.join(" · ")}`);
   } catch(e) {
     console.error("Error importando Excel:", e);
     showToast("⚠ Error leyendo el archivo: " + e.message);
@@ -2491,8 +2553,8 @@ async function exportarExcel(soloEmp) {
   wb.creator = "Gastos App"; wb.created = new Date();
   const splitMedio = g => { const p=(g.medio||"").split(" · "); return [p[0]||"",p[1]||""]; };
   const catHeaders = n => n<=1 ? ["Categoría"] : Array.from({length:n},(_,i)=>`Categoría ${i+1}`);
-  const buildHeaders = n => ["Fecha","Empresa","Titular/Comercio","Descripción",...catHeaders(n),"Medio de pago","Subtipo","Moneda","Monto Total","Cant. Cuotas","Monto/Cuota","Nota","Pagado por","Hora"];
-  const toRow = (g,n) => { const cats=getCats(g); const catCols=Array.from({length:n},(_,i)=>cats[i]||""); return [g.fecha, g.empresa, g.titular||"", g.desc, ...catCols, ...splitMedio(g), g.moneda||"ARS", g.monto, g.cantCuotas||"", g.montoCuota||"", g.nota||"", g.pagador||"", g.hora||""]; };
+  const buildHeaders = n => ["Fecha","Empresa","Titular/Comercio","Descripción",...catHeaders(n),"Medio de pago","Subtipo","Moneda","Monto Total","Cant. Cuotas","Monto/Cuota","Nota","Pagado por","Hora","ID"];
+  const toRow = (g,n) => { const cats=getCats(g); const catCols=Array.from({length:n},(_,i)=>cats[i]||""); return [g.fecha, g.empresa, g.titular||"", g.desc, ...catCols, ...splitMedio(g), g.moneda||"ARS", g.monto, g.cantCuotas||"", g.montoCuota||"", g.nota||"", g.pagador||"", g.hora||"", String(g.id)]; };
 
   const descargar = async (nombre) => {
     const buf = await wb.xlsx.writeBuffer();
@@ -2511,7 +2573,7 @@ async function exportarExcel(soloEmp) {
     const rows = gastosArr.map(g=>toRow(g,numCat));
     const ws = wb.addWorksheet(nombreHoja);
     ws.addRow(headers); rows.forEach(r=>ws.addRow(r));
-    aplicarEstilosHoja(ws, rows, numCat);
+    aplicarEstilosHoja(ws, rows, numCat, 0, true);
     if (!ranges) ranges = crearHojaListas(wb);
     aplicarValidacionesHoja(ws, numCat, ranges);
     return rows.length;
@@ -2543,18 +2605,18 @@ async function exportarBusqueda() {
   const sorted = [...resultados].sort((a,b)=>cmpGastoDesc(b,a));
   const numCat = Math.max(1, ...sorted.map(g=>getCats(g).length));
   const catHeaders = numCat<=1 ? ["Categoría"] : Array.from({length:numCat},(_,i)=>`Categoría ${i+1}`);
-  const headers = ["Fecha","Empresa","Titular/Comercio","Descripción",...catHeaders,"Medio de pago","Subtipo","Moneda","Monto Total","Cant. Cuotas","Monto/Cuota","Nota","Pagado por","Hora"];
+  const headers = ["Fecha","Empresa","Titular/Comercio","Descripción",...catHeaders,"Medio de pago","Subtipo","Moneda","Monto Total","Cant. Cuotas","Monto/Cuota","Nota","Pagado por","Hora","ID"];
   const rows = sorted.map(g=>{
     const cats = getCats(g);
     const catCols = Array.from({length:numCat},(_,i)=>cats[i]||"");
-    return [g.fecha, g.empresa, g.titular||"", g.desc, ...catCols, ...splitMedio(g), g.moneda||"ARS", g.monto, g.cantCuotas||"", g.montoCuota||"", g.nota||"", g.pagador||"", g.hora||""];
+    return [g.fecha, g.empresa, g.titular||"", g.desc, ...catCols, ...splitMedio(g), g.moneda||"ARS", g.monto, g.cantCuotas||"", g.montoCuota||"", g.nota||"", g.pagador||"", g.hora||"", String(g.id)];
   });
   const wb = new ExcelJS.Workbook();
   wb.creator = "Gastos App"; wb.created = new Date();
   const labelHoja = (state.busqueda||state.filtroBEmp||(state.filtroBCats&&state.filtroBCats.join("+"))||"busqueda").replace(/[^a-zA-Z0-9 áéíóúñÁÉÍÓÚÑ+]/g,"").trim().slice(0,28) || "Busqueda";
   const ws = wb.addWorksheet(labelHoja);
   ws.addRow(headers); rows.forEach(r=>ws.addRow(r));
-  aplicarEstilosHoja(ws, rows, numCat);
+  aplicarEstilosHoja(ws, rows, numCat, 0, true);
   const ranges = crearHojaListas(wb);
   aplicarValidacionesHoja(ws, numCat, ranges);
   const buf = await wb.xlsx.writeBuffer();
