@@ -2226,9 +2226,13 @@ function crearHojaListas(wb) {
   const medios = Object.keys(MEDIOS).sort((a,b)=>a.localeCompare(b));
   const subtiposFlat = [...new Set(Object.values(MEDIOS).flatMap(m=>m.sub||[]))].sort((a,b)=>a.localeCompare(b));
   const monedas = ["ARS","U$S","Euros","CLP"];
+  const catsProyecto = state.categorias.filter(c => esCatProyecto(c));
+  const catsTipo = state.categorias.filter(c => !esCatProyecto(c));
   const cols = [
     {header:"Empresa", values: EMPRESAS},
     {header:"Categoría", values: state.categorias},
+    {header:"Categoría Proyecto/Viaje", values: catsProyecto},
+    {header:"Categoría Tipo de gasto", values: catsTipo},
     {header:"Medio de pago", values: medios},
     {header:"Subtipo", values: subtiposFlat},
     {header:"Moneda", values: monedas},
@@ -2242,16 +2246,18 @@ function crearHojaListas(wb) {
   return {
     empresaRange: rango(1, EMPRESAS.length),
     categoriaRange: rango(2, state.categorias.length),
-    medioRange: rango(3, medios.length),
-    subtipoRange: rango(4, subtiposFlat.length),
-    monedaRange: rango(5, monedas.length),
-    empresaSplitRange: rango(6, EMPRESAS.length+1),
+    categoriaProyectoRange: rango(3, catsProyecto.length),
+    categoriaTipoRange: rango(4, catsTipo.length),
+    medioRange: rango(5, medios.length),
+    subtipoRange: rango(6, subtiposFlat.length),
+    monedaRange: rango(7, monedas.length),
+    empresaSplitRange: rango(8, EMPRESAS.length+1),
   };
 }
 
 // Aplica dropdowns (validación de datos) a una hoja de gastos, incluyendo filas vacías
 // para que al agregar filas nuevas para carga masiva también tengan la lista.
-function aplicarValidacionesHoja(ws, numCatCols, ranges, maxFilas, extraCols, empresaRangeOverride) {
+function aplicarValidacionesHoja(ws, numCatCols, ranges, maxFilas, extraCols, empresaRangeOverride, numProyCols) {
   maxFilas = maxFilas || 500;
   const off = extraCols || 0;
   const colEmpresa = colLetter(2);
@@ -2263,7 +2269,11 @@ function aplicarValidacionesHoja(ws, numCatCols, ranges, maxFilas, extraCols, em
   ws.dataValidations.add(`${colEmpresa}2:${colEmpresa}${maxFilas}`, dv(empresaRangeOverride || ranges.empresaRange));
   for (let c=0; c<numCatCols; c++) {
     const colC = colLetter(5+c+off);
-    ws.dataValidations.add(`${colC}2:${colC}${maxFilas}`, dv(ranges.categoriaRange));
+    // Si viene numProyCols, las primeras columnas son exclusivas de Proyecto/Viaje y el resto
+    // de Tipo de gasto (dos dropdowns separados); si no, todas comparten el listado completo
+    // (comportamiento anterior, usado por la plantilla en blanco).
+    const range = numProyCols ? (c < numProyCols ? ranges.categoriaProyectoRange : ranges.categoriaTipoRange) : ranges.categoriaRange;
+    ws.dataValidations.add(`${colC}2:${colC}${maxFilas}`, dv(range));
   }
   ws.dataValidations.add(`${colMedio}2:${colMedio}${maxFilas}`, dv(ranges.medioRange));
   ws.dataValidations.add(`${colSubtipo}2:${colSubtipo}${maxFilas}`, dv(ranges.subtipoRange));
@@ -2552,9 +2562,21 @@ async function exportarExcel(soloEmp) {
   const wb = new ExcelJS.Workbook();
   wb.creator = "Gastos App"; wb.created = new Date();
   const splitMedio = g => { const p=(g.medio||"").split(" · "); return [p[0]||"",p[1]||""]; };
-  const catHeaders = n => n<=1 ? ["Categoría"] : Array.from({length:n},(_,i)=>`Categoría ${i+1}`);
-  const buildHeaders = n => ["Fecha","Empresa","Titular/Comercio","Descripción",...catHeaders(n),"Medio de pago","Subtipo","Moneda","Monto Total","Cant. Cuotas","Monto/Cuota","Nota","Pagado por","Hora","ID"];
-  const toRow = (g,n) => { const cats=getCats(g); const catCols=Array.from({length:n},(_,i)=>cats[i]||""); return [g.fecha, g.empresa, g.titular||"", g.desc, ...catCols, ...splitMedio(g), g.moneda||"ARS", g.monto, g.cantCuotas||"", g.montoCuota||"", g.nota||"", g.pagador||"", g.hora||"", String(g.id)]; };
+  // Columna(s) de categoría exclusivas para Proyecto/Viaje primero (en blanco si el gasto no
+  // tiene ninguna), y recién después las de Tipo de gasto — así nunca se mezclan en la misma
+  // celda y queda claro/editable en el Excel a qué eje pertenece cada una.
+  const catsProy = g => getCats(g).filter(c => esCatProyecto(c));
+  const catsTipo = g => getCats(g).filter(c => !esCatProyecto(c));
+  const catHeaders = (mp,mt) => [
+    ...Array.from({length:mp},(_,i)=> mp<=1 ? "Categoría Proyecto/Viaje" : `Categoría Proyecto/Viaje ${i+1}`),
+    ...Array.from({length:mt},(_,i)=> mt<=1 ? "Categoría" : `Categoría ${i+1}`),
+  ];
+  const buildHeaders = (mp,mt) => ["Fecha","Empresa","Titular/Comercio","Descripción",...catHeaders(mp,mt),"Medio de pago","Subtipo","Moneda","Monto Total","Cant. Cuotas","Monto/Cuota","Nota","Pagado por","Hora","ID"];
+  const toRow = (g,mp,mt) => {
+    const proyCols = Array.from({length:mp},(_,i)=>catsProy(g)[i]||"");
+    const tipoCols = Array.from({length:mt},(_,i)=>catsTipo(g)[i]||"");
+    return [g.fecha, g.empresa, g.titular||"", g.desc, ...proyCols, ...tipoCols, ...splitMedio(g), g.moneda||"ARS", g.monto, g.cantCuotas||"", g.montoCuota||"", g.nota||"", g.pagador||"", g.hora||"", String(g.id)];
+  };
 
   const descargar = async (nombre) => {
     const buf = await wb.xlsx.writeBuffer();
@@ -2568,14 +2590,15 @@ async function exportarExcel(soloEmp) {
 
   let ranges = null;
   const addSheet = (nombreHoja, gastosArr) => {
-    const numCat = Math.max(1, ...gastosArr.map(g=>getCats(g).length));
-    const headers = buildHeaders(numCat);
-    const rows = gastosArr.map(g=>toRow(g,numCat));
+    const maxProy = Math.max(1, ...gastosArr.map(g=>catsProy(g).length));
+    const maxTipo = Math.max(1, ...gastosArr.map(g=>catsTipo(g).length));
+    const headers = buildHeaders(maxProy, maxTipo);
+    const rows = gastosArr.map(g=>toRow(g,maxProy,maxTipo));
     const ws = wb.addWorksheet(nombreHoja);
     ws.addRow(headers); rows.forEach(r=>ws.addRow(r));
-    aplicarEstilosHoja(ws, rows, numCat, 0, true);
+    aplicarEstilosHoja(ws, rows, maxProy+maxTipo, 0, true);
     if (!ranges) ranges = crearHojaListas(wb);
-    aplicarValidacionesHoja(ws, numCat, ranges);
+    aplicarValidacionesHoja(ws, maxProy+maxTipo, ranges, undefined, undefined, undefined, maxProy);
     return rows.length;
   };
 
@@ -2603,22 +2626,30 @@ async function exportarBusqueda() {
   if(!resultados||!resultados.length) return showToast("Sin resultados para exportar");
   const splitMedio = g => { const p=(g.medio||"").split(" · "); return [p[0]||"",p[1]||""]; };
   const sorted = [...resultados].sort((a,b)=>cmpGastoDesc(b,a));
-  const numCat = Math.max(1, ...sorted.map(g=>getCats(g).length));
-  const catHeaders = numCat<=1 ? ["Categoría"] : Array.from({length:numCat},(_,i)=>`Categoría ${i+1}`);
+  // Igual que en exportarExcel: Proyecto/Viaje siempre en las primeras columnas (en blanco si no
+  // tiene), Tipo de gasto después — nunca se mezclan en la misma celda.
+  const catsProy = g => getCats(g).filter(c => esCatProyecto(c));
+  const catsTipo = g => getCats(g).filter(c => !esCatProyecto(c));
+  const maxProy = Math.max(1, ...sorted.map(g=>catsProy(g).length));
+  const maxTipo = Math.max(1, ...sorted.map(g=>catsTipo(g).length));
+  const catHeaders = [
+    ...Array.from({length:maxProy},(_,i)=> maxProy<=1 ? "Categoría Proyecto/Viaje" : `Categoría Proyecto/Viaje ${i+1}`),
+    ...Array.from({length:maxTipo},(_,i)=> maxTipo<=1 ? "Categoría" : `Categoría ${i+1}`),
+  ];
   const headers = ["Fecha","Empresa","Titular/Comercio","Descripción",...catHeaders,"Medio de pago","Subtipo","Moneda","Monto Total","Cant. Cuotas","Monto/Cuota","Nota","Pagado por","Hora","ID"];
   const rows = sorted.map(g=>{
-    const cats = getCats(g);
-    const catCols = Array.from({length:numCat},(_,i)=>cats[i]||"");
-    return [g.fecha, g.empresa, g.titular||"", g.desc, ...catCols, ...splitMedio(g), g.moneda||"ARS", g.monto, g.cantCuotas||"", g.montoCuota||"", g.nota||"", g.pagador||"", g.hora||"", String(g.id)];
+    const proyCols = Array.from({length:maxProy},(_,i)=>catsProy(g)[i]||"");
+    const tipoCols = Array.from({length:maxTipo},(_,i)=>catsTipo(g)[i]||"");
+    return [g.fecha, g.empresa, g.titular||"", g.desc, ...proyCols, ...tipoCols, ...splitMedio(g), g.moneda||"ARS", g.monto, g.cantCuotas||"", g.montoCuota||"", g.nota||"", g.pagador||"", g.hora||"", String(g.id)];
   });
   const wb = new ExcelJS.Workbook();
   wb.creator = "Gastos App"; wb.created = new Date();
   const labelHoja = (state.busqueda||state.filtroBEmp||(state.filtroBCats&&state.filtroBCats.join("+"))||"busqueda").replace(/[^a-zA-Z0-9 áéíóúñÁÉÍÓÚÑ+]/g,"").trim().slice(0,28) || "Busqueda";
   const ws = wb.addWorksheet(labelHoja);
   ws.addRow(headers); rows.forEach(r=>ws.addRow(r));
-  aplicarEstilosHoja(ws, rows, numCat, 0, true);
+  aplicarEstilosHoja(ws, rows, maxProy+maxTipo, 0, true);
   const ranges = crearHojaListas(wb);
-  aplicarValidacionesHoja(ws, numCat, ranges);
+  aplicarValidacionesHoja(ws, maxProy+maxTipo, ranges, undefined, undefined, undefined, maxProy);
   const buf = await wb.xlsx.writeBuffer();
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([buf], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
