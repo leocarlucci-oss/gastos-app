@@ -2565,15 +2565,16 @@ async function exportarExcel(soloEmp) {
   // Columna(s) de categoría exclusivas para Proyecto/Viaje primero (en blanco si el gasto no
   // tiene ninguna), y recién después las de Tipo de gasto — así nunca se mezclan en la misma
   // celda y queda claro/editable en el Excel a qué eje pertenece cada una.
-  // Orden estable: dentro de cada gasto, las categorías se ordenan según su posición en la
-  // pestaña Categorías (state.categorias), no según el orden en que se tildaron al cargarlas.
-  // Así, si un gasto combina p.ej. "Supermercado" + "Aereos", siempre caen en el mismo orden
-  // (misma columna) sin importar cuál se marcó primero al cargar ese gasto puntual. Para
-  // controlar qué categoría "gana" la columna Categoría 1 cuando se combinan, se puede reordenar
-  // el listado de categorías (arrastrar ⠿) en la app.
-  const ordenCat = c => { const i = state.categorias.indexOf(c); return i === -1 ? 999 : i; };
-  const catsProy = g => getCats(g).filter(c => esCatProyecto(c)).sort((a,b)=>ordenCat(a)-ordenCat(b));
-  const catsTipo = g => getCats(g).filter(c => !esCatProyecto(c)).sort((a,b)=>ordenCat(a)-ordenCat(b));
+  // Orden estable: dentro de cada gasto, las categorías se ordenan por frecuencia de uso global
+  // (la más usada en el total de gastos gana la columna Categoría 1), y a igual frecuencia por
+  // su posición en la pestaña Categorías. Así el mismo par de categorías siempre cae en el mismo
+  // orden entre gastos distintos, y la categoría más común no queda a la suerte de cuál se tildó
+  // primero al cargar cada gasto puntual.
+  const freqCat = {};
+  state.gastos.forEach(g => getCats(g).forEach(c => { freqCat[c] = (freqCat[c]||0) + 1; }));
+  const ordenCat = (a,b) => (freqCat[b]||0) - (freqCat[a]||0) || (state.categorias.indexOf(a) - state.categorias.indexOf(b));
+  const catsProy = g => getCats(g).filter(c => esCatProyecto(c)).sort(ordenCat);
+  const catsTipo = g => getCats(g).filter(c => !esCatProyecto(c)).sort(ordenCat);
   const catHeaders = (mp,mt) => [
     ...Array.from({length:mp},(_,i)=> mp<=1 ? "Categoría Proyecto/Viaje" : `Categoría Proyecto/Viaje ${i+1}`),
     ...Array.from({length:mt},(_,i)=> mt<=1 ? "Categoría" : `Categoría ${i+1}`),
@@ -2634,10 +2635,14 @@ async function exportarBusqueda() {
   const splitMedio = g => { const p=(g.medio||"").split(" · "); return [p[0]||"",p[1]||""]; };
   const sorted = [...resultados].sort((a,b)=>cmpGastoDesc(b,a));
   // Igual que en exportarExcel: Proyecto/Viaje siempre en las primeras columnas (en blanco si no
-  // tiene), Tipo de gasto después — nunca se mezclan en la misma celda.
-  const ordenCat = c => { const i = state.categorias.indexOf(c); return i === -1 ? 999 : i; };
-  const catsProy = g => getCats(g).filter(c => esCatProyecto(c)).sort((a,b)=>ordenCat(a)-ordenCat(b));
-  const catsTipo = g => getCats(g).filter(c => !esCatProyecto(c)).sort((a,b)=>ordenCat(a)-ordenCat(b));
+  // tiene), Tipo de gasto después. Orden por frecuencia de uso global (la más usada gana la
+  // Categoría 1), empate por posición en la pestaña Categorías — así el mismo par de categorías
+  // siempre cae en el mismo orden entre gastos distintos.
+  const freqCat = {};
+  state.gastos.forEach(g => getCats(g).forEach(c => { freqCat[c] = (freqCat[c]||0) + 1; }));
+  const ordenCat = (a,b) => (freqCat[b]||0) - (freqCat[a]||0) || (state.categorias.indexOf(a) - state.categorias.indexOf(b));
+  const catsProy = g => getCats(g).filter(c => esCatProyecto(c)).sort(ordenCat);
+  const catsTipo = g => getCats(g).filter(c => !esCatProyecto(c)).sort(ordenCat);
   const maxProy = Math.max(1, ...sorted.map(g=>catsProy(g).length));
   const maxTipo = Math.max(1, ...sorted.map(g=>catsTipo(g).length));
   const catHeaders = [
