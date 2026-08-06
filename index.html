@@ -48,9 +48,12 @@ button{cursor:pointer;}
 .panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px;}
 .field{margin-bottom:14px;}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.row2-desktop{display:block;}
+@media (min-width:900px){.row2-desktop{display:grid;grid-template-columns:1fr 1fr;gap:0 16px;}}
 .btn-primary{width:100%;padding:12px;background:var(--accent);color:#0F0F11;border:none;border-radius:8px;font-size:14px;font-weight:600;margin-top:4px;}
 .btn-primary:disabled{opacity:.4;}
 .emp-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
+@media (min-width:900px){.emp-grid{grid-template-columns:repeat(auto-fit,minmax(100px,1fr));}}
 .tabs{display:flex;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:4px;margin:0 0 20px;}
 .tab{flex:1;padding:8px 2px;border:none;background:transparent;color:var(--muted);font-size:11px;border-radius:7px;font-weight:500;}
 .tab.active{background:var(--border);color:var(--text);}
@@ -84,6 +87,8 @@ button{cursor:pointer;}
 .toast.show{opacity:1;}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:200;display:flex;align-items:flex-start;justify-content:center;padding:calc(16px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));overflow-y:auto;}
 .modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:500px;margin-top:20px;}
+@media (min-width:900px){.modal{max-width:640px;padding:28px;}}
+@media (min-width:1300px){.modal{max-width:720px;}}
 .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;}
 .cats-modal{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:300;display:flex;align-items:center;justify-content:center;padding:calc(16px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));}
 .cats-box{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:420px;max-height:80vh;max-height:80dvh;display:flex;flex-direction:column;}
@@ -1052,8 +1057,10 @@ function buildModalEditarGasto() {
         <button onclick="cerrarEditarGasto()" style="background:none;border:none;color:var(--muted);font-size:20px">✕</button>
       </div>
       <div class="field"><span class="label">Empresa</span>${buildEmpGrid(eEmp,"setEditEmpresa")}</div>
+      <div class="row2-desktop">
       <div class="field"><span class="label">Titular / Comercio</span><div class="ac-wrap"><input value="${esc(eTitular)}" oninput="state._editTitular=this.value;acTitular(this,'ac-modal')" onfocus="this.select();acTitular(this,'ac-modal')" onblur="setTimeout(()=>acCerrar('ac-modal'),200)" placeholder="Ej: YPF, Mercado Libre..." autocomplete="off"><div id="ac-modal" class="ac-dropdown" style="display:none"></div></div></div>
       <div class="field"><span class="label">Descripción</span><div class="ac-wrap"><input value="${esc(eDesc)}" oninput="state._editDesc=this.value;acDesc(this,'ac-desc-modal')" onfocus="acDesc(this,'ac-desc-modal')" onblur="setTimeout(()=>acCerrar('ac-desc-modal'),200)" autocomplete="off"><div id="ac-desc-modal" class="ac-dropdown" style="display:none"></div></div></div>
+      </div>
       <div class="field">
         <span class="label" style="display:flex;justify-content:space-between;align-items:center">
           <span>Categoría</span>
@@ -1086,6 +1093,7 @@ function buildCargar() {
     ${!state.splitMode
       ? `<div class="field"><span class="label">Empresa</span>${buildEmpGrid(state.empresa,"setEmpresa")}</div>`
       : `<div class="field"><span class="label">División</span>${buildSplitEditor(state.splitParts,"updateSplit","addSplit","eqSplit","updateSplitPct","split-total-cargar")}</div>`}
+    <div class="row2-desktop">
     <div class="field">
       <span class="label">Titular / Comercio</span>
       <div class="ac-wrap">
@@ -1099,6 +1107,7 @@ function buildCargar() {
         <input id="inp-desc" value="${esc(state.desc)}" oninput="state.desc=this.value;acDesc('inp-desc','ac-desc-cargar')" onfocus="acDesc('inp-desc','ac-desc-cargar')" onblur="setTimeout(()=>acCerrar('ac-desc-cargar'),200)" placeholder="Ej: Cena, combustible, repuesto..." autocomplete="off">
         <div id="ac-desc-cargar" class="ac-dropdown" style="display:none"></div>
       </div>
+    </div>
     </div>
     <div class="field">
       <span class="label" style="display:flex;justify-content:space-between;align-items:center">
@@ -1149,8 +1158,10 @@ function buildIA() {
     const monOpts = ["ARS","U$S","Euros","CLP"].map(m=>`<option${eMon===m?" selected":""}>${m}</option>`).join("");
     resultHTML = `<div class="ia-result">
       <div style="color:var(--accent);font-weight:600;margin-bottom:12px">✓ Revisá y editá</div>
+      <div class="row2-desktop">
       <div class="field"><span class="label">Titular / Comercio</span><input value="${esc(state._iaTitular!==undefined?state._iaTitular:(r.titular||''))}" oninput="state._iaTitular=this.value" placeholder="Ej: YPF, Mercado Libre..."></div>
       <div class="field"><span class="label">Descripción</span><input value="${esc(eD)}" oninput="state._iaDesc=this.value"></div>
+      </div>
       <div class="field">
         <span class="label" style="display:flex;justify-content:space-between;align-items:center">
           <span>Categoría</span>
