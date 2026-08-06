@@ -2156,7 +2156,7 @@ function fmtMonedaExcel(moneda) {
   return '"$ "#,##0.00';
 }
 
-function aplicarEstilosHoja(ws, rows, numCatCols, extraCols, hasId, numProyCols) {
+function aplicarEstilosHoja(ws, rows, numCatCols, extraCols, hasId) {
   numCatCols = numCatCols || 1;
   const off = extraCols || 0;                 // columnas extra insertadas después de "Empresa"
   const colMonedaIdx0 = 6 + numCatCols + off; // índice 0-based dentro del array de la fila
@@ -2199,12 +2199,7 @@ function aplicarEstilosHoja(ws, rows, numCatCols, extraCols, hasId, numProyCols)
     exRow.height = 18;
   });
 
-  // Las columnas de Proyecto/Viaje son texto libre (más anchas); las de Tipo de gasto son
-  // pivote de una sola letra ("X"), así que van bien angostas.
-  const anchoCatCols = numProyCols !== undefined
-    ? Array.from({length:numCatCols},(_,i)=> i<numProyCols ? 22 : 7)
-    : Array(numCatCols).fill(18);
-  const widths = [12,12, ...Array(off).fill(10), 24,32, ...anchoCatCols, 16,16,8,14,10,14,28,12,8];
+  const widths = [12,12, ...Array(off).fill(10), 24,32, ...Array(numCatCols).fill(18), 16,16,8,14,10,14,28,12,8];
   widths.forEach((w,i) => { ws.getColumn(i+1).width = w; });
   ws.views = [{ state:"frozen", ySplit:1 }];
   ws.autoFilter = { from:{row:1,column:1}, to:{row:1,column:totalCols} };
@@ -2231,13 +2226,13 @@ function crearHojaListas(wb) {
   const medios = Object.keys(MEDIOS).sort((a,b)=>a.localeCompare(b));
   const subtiposFlat = [...new Set(Object.values(MEDIOS).flatMap(m=>m.sub||[]))].sort((a,b)=>a.localeCompare(b));
   const monedas = ["ARS","U$S","Euros","CLP"];
-  // Tipo de gasto ya no usa dropdown de lista (pasó a columna fija por categoría, ver
-  // exportarExcel/exportarBusqueda), solo queda el rango de Proyecto/Viaje (texto libre).
   const catsProyecto = state.categorias.filter(c => esCatProyecto(c));
+  const catsTipo = state.categorias.filter(c => !esCatProyecto(c));
   const cols = [
     {header:"Empresa", values: EMPRESAS},
     {header:"Categoría", values: state.categorias},
     {header:"Categoría Proyecto/Viaje", values: catsProyecto},
+    {header:"Categoría Tipo de gasto", values: catsTipo},
     {header:"Medio de pago", values: medios},
     {header:"Subtipo", values: subtiposFlat},
     {header:"Moneda", values: monedas},
@@ -2252,10 +2247,11 @@ function crearHojaListas(wb) {
     empresaRange: rango(1, EMPRESAS.length),
     categoriaRange: rango(2, state.categorias.length),
     categoriaProyectoRange: rango(3, catsProyecto.length),
-    medioRange: rango(4, medios.length),
-    subtipoRange: rango(5, subtiposFlat.length),
-    monedaRange: rango(6, monedas.length),
-    empresaSplitRange: rango(7, EMPRESAS.length+1),
+    categoriaTipoRange: rango(4, catsTipo.length),
+    medioRange: rango(5, medios.length),
+    subtipoRange: rango(6, subtiposFlat.length),
+    monedaRange: rango(7, monedas.length),
+    empresaSplitRange: rango(8, EMPRESAS.length+1),
   };
 }
 
@@ -2273,16 +2269,11 @@ function aplicarValidacionesHoja(ws, numCatCols, ranges, maxFilas, extraCols, em
   ws.dataValidations.add(`${colEmpresa}2:${colEmpresa}${maxFilas}`, dv(empresaRangeOverride || ranges.empresaRange));
   for (let c=0; c<numCatCols; c++) {
     const colC = colLetter(5+c+off);
-    if (numProyCols !== undefined) {
-      // Primeras columnas = Proyecto/Viaje (texto libre, dropdown con el listado); el resto son
-      // columnas pivote de Tipo de gasto (una por categoría, se marcan con "X").
-      if (c < numProyCols) ws.dataValidations.add(`${colC}2:${colC}${maxFilas}`, dv(ranges.categoriaProyectoRange));
-      else ws.dataValidations.add(`${colC}2:${colC}${maxFilas}`, dv('"X"'));
-    } else {
-      // Sin numProyCols (plantilla en blanco): comportamiento anterior, todas comparten el
-      // listado completo de categorías.
-      ws.dataValidations.add(`${colC}2:${colC}${maxFilas}`, dv(ranges.categoriaRange));
-    }
+    // Si viene numProyCols, las primeras columnas son exclusivas de Proyecto/Viaje y el resto
+    // de Tipo de gasto (dos dropdowns separados); si no, todas comparten el listado completo
+    // (comportamiento anterior, usado por la plantilla en blanco).
+    const range = numProyCols ? (c < numProyCols ? ranges.categoriaProyectoRange : ranges.categoriaTipoRange) : ranges.categoriaRange;
+    ws.dataValidations.add(`${colC}2:${colC}${maxFilas}`, dv(range));
   }
   ws.dataValidations.add(`${colMedio}2:${colMedio}${maxFilas}`, dv(ranges.medioRange));
   ws.dataValidations.add(`${colSubtipo}2:${colSubtipo}${maxFilas}`, dv(ranges.subtipoRange));
@@ -2346,13 +2337,10 @@ async function handleImportExcel(input) {
     hojas.forEach(ws => {
       const headerRow = ws.getRow(1);
       const colMap = {};
-      const catCols = [];       // columnas de texto libre (Categoría / Categoría Proyecto/Viaje)
-      const catPivotCols = [];  // columnas fijas de Tipo de gasto: header "Cat: Nombre", celda = X/vacío
+      const catCols = [];
       headerRow.eachCell((cell, colIdx) => {
-        const hRaw = String(cell.value||"").trim();
-        const h = hRaw.toLowerCase();
-        if (h.startsWith("cat:")) catPivotCols.push({ colIdx, nombre: normCatName(hRaw.slice(hRaw.indexOf(":")+1).trim()) });
-        else if (h.startsWith("categoría") || h.startsWith("categoria")) catCols.push(colIdx);
+        const h = String(cell.value||"").trim().toLowerCase();
+        if (h.startsWith("categoría") || h.startsWith("categoria")) catCols.push(colIdx);
         else if (h) colMap[h] = colIdx;
       });
       const get = (row, key) => { const idx = colMap[key]; if(!idx) return ""; const c = row.getCell(idx); return (c && c.value !== null && c.value !== undefined) ? c.value : ""; };
@@ -2381,11 +2369,7 @@ async function handleImportExcel(input) {
           splitPartes = [{empresa:"CDM",pct:partesPct[0]},{empresa:"LCK",pct:partesPct[1]}];
         }
 
-        const categoriasLibres = catCols.map(ci => { const c = row.getCell(ci); if(!c || !c.value) return ""; const raw = String(c.value).trim(); return raw.toLowerCase() === "sin categoría" ? "Sin categoría" : normCatName(raw); }).filter(Boolean);
-        // Columnas pivote de Tipo de gasto: el nombre sale del header (no de lo que se haya
-        // tipeado en la celda), así no hay riesgo de typo — solo importa si la celda está marcada.
-        const categoriasPivot = catPivotCols.filter(({colIdx}) => { const c = row.getCell(colIdx); return c && c.value !== null && c.value !== undefined && String(c.value).trim() !== ""; }).map(({nombre}) => nombre);
-        const categorias = [...categoriasLibres, ...categoriasPivot];
+        const categorias = catCols.map(ci => { const c = row.getCell(ci); if(!c || !c.value) return ""; const raw = String(c.value).trim(); return raw.toLowerCase() === "sin categoría" ? "Sin categoría" : normCatName(raw); }).filter(Boolean);
         const medioBase = String(get(row,"medio de pago")||"").trim();
         const subtipo = String(get(row,"subtipo")||"").trim();
         const monedaRaw = String(get(row,"moneda")||"").trim();
@@ -2578,26 +2562,19 @@ async function exportarExcel(soloEmp) {
   const wb = new ExcelJS.Workbook();
   wb.creator = "Gastos App"; wb.created = new Date();
   const splitMedio = g => { const p=(g.medio||"").split(" · "); return [p[0]||"",p[1]||""]; };
-  // Proyecto/Viaje: columna(s) de texto libre primero (en blanco si el gasto no tiene ninguna).
-  // Tipo de gasto: una columna FIJA por cada categoría existente (orden global de state.categorias),
-  // marcada con "X" — así la misma categoría siempre cae en la misma columna, sin importar qué
-  // otras categorías tenga cada gasto (antes se armaban por posición y se corrían entre filas).
+  // Columna(s) de categoría exclusivas para Proyecto/Viaje primero (en blanco si el gasto no
+  // tiene ninguna), y recién después las de Tipo de gasto — así nunca se mezclan en la misma
+  // celda y queda claro/editable en el Excel a qué eje pertenece cada una.
   const catsProy = g => getCats(g).filter(c => esCatProyecto(c));
   const catsTipo = g => getCats(g).filter(c => !esCatProyecto(c));
-  const tipoCatsGlobal = state.categorias.filter(c => !esCatProyecto(c));
-  // Solo columnas de Tipo de gasto que estén realmente usadas en ESTA hoja (si no, con muchas
-  // categorías el Excel termina interminable hacia la derecha). Proyecto/Viaje sí se exporta
-  // siempre (aunque quede vacía) porque es la principal.
-  const tipoCatsUsadas = gastosArr => tipoCatsGlobal.filter(c => gastosArr.some(g => catsTipo(g).includes(c)));
-  const catHeaders = (mp, tipoCats) => [
+  const catHeaders = (mp,mt) => [
     ...Array.from({length:mp},(_,i)=> mp<=1 ? "Categoría Proyecto/Viaje" : `Categoría Proyecto/Viaje ${i+1}`),
-    ...tipoCats.map(c => `Cat: ${c}`),
+    ...Array.from({length:mt},(_,i)=> mt<=1 ? "Categoría" : `Categoría ${i+1}`),
   ];
-  const buildHeaders = (mp, tipoCats) => ["Fecha","Empresa","Titular/Comercio","Descripción",...catHeaders(mp,tipoCats),"Medio de pago","Subtipo","Moneda","Monto Total","Cant. Cuotas","Monto/Cuota","Nota","Pagado por","Hora","ID"];
-  const toRow = (g,mp,tipoCats) => {
+  const buildHeaders = (mp,mt) => ["Fecha","Empresa","Titular/Comercio","Descripción",...catHeaders(mp,mt),"Medio de pago","Subtipo","Moneda","Monto Total","Cant. Cuotas","Monto/Cuota","Nota","Pagado por","Hora","ID"];
+  const toRow = (g,mp,mt) => {
     const proyCols = Array.from({length:mp},(_,i)=>catsProy(g)[i]||"");
-    const gTipo = catsTipo(g);
-    const tipoCols = tipoCats.map(c => gTipo.includes(c) ? "X" : "");
+    const tipoCols = Array.from({length:mt},(_,i)=>catsTipo(g)[i]||"");
     return [g.fecha, g.empresa, g.titular||"", g.desc, ...proyCols, ...tipoCols, ...splitMedio(g), g.moneda||"ARS", g.monto, g.cantCuotas||"", g.montoCuota||"", g.nota||"", g.pagador||"", g.hora||"", String(g.id)];
   };
 
@@ -2611,20 +2588,17 @@ async function exportarExcel(soloEmp) {
   const fechaFiltro = g => (!state.exportDesde||g.fecha>=state.exportDesde)&&(!state.exportHasta||g.fecha<=state.exportHasta);
   const sufFecha = (state.exportDesde||state.exportHasta) ? `_${state.exportDesde||"inicio"}_${state.exportHasta||"hoy"}` : "";
 
-  // maxProy se calcula sobre TODOS los gastos (no solo los de esta hoja) para que la cantidad de
-  // columnas de Proyecto/Viaje sea igual en todas las hojas del archivo (misma estructura siempre).
-  const maxProyGlobal = Math.max(1, ...state.gastos.map(g=>catsProy(g).length));
   let ranges = null;
   const addSheet = (nombreHoja, gastosArr) => {
-    const tipoCats = tipoCatsUsadas(gastosArr);
-    const headers = buildHeaders(maxProyGlobal, tipoCats);
-    const rows = gastosArr.map(g=>toRow(g,maxProyGlobal,tipoCats));
+    const maxProy = Math.max(1, ...gastosArr.map(g=>catsProy(g).length));
+    const maxTipo = Math.max(1, ...gastosArr.map(g=>catsTipo(g).length));
+    const headers = buildHeaders(maxProy, maxTipo);
+    const rows = gastosArr.map(g=>toRow(g,maxProy,maxTipo));
     const ws = wb.addWorksheet(nombreHoja);
     ws.addRow(headers); rows.forEach(r=>ws.addRow(r));
-    const numCatCols = maxProyGlobal + tipoCats.length;
-    aplicarEstilosHoja(ws, rows, numCatCols, 0, true, maxProyGlobal);
+    aplicarEstilosHoja(ws, rows, maxProy+maxTipo, 0, true);
     if (!ranges) ranges = crearHojaListas(wb);
-    aplicarValidacionesHoja(ws, numCatCols, ranges, undefined, undefined, undefined, maxProyGlobal);
+    aplicarValidacionesHoja(ws, maxProy+maxTipo, ranges, undefined, undefined, undefined, maxProy);
     return rows.length;
   };
 
@@ -2652,26 +2626,20 @@ async function exportarBusqueda() {
   if(!resultados||!resultados.length) return showToast("Sin resultados para exportar");
   const splitMedio = g => { const p=(g.medio||"").split(" · "); return [p[0]||"",p[1]||""]; };
   const sorted = [...resultados].sort((a,b)=>cmpGastoDesc(b,a));
-  // Igual que en exportarExcel: Proyecto/Viaje en columna(s) de texto libre primero (en blanco
-  // si no tiene), Tipo de gasto como columna FIJA por categoría (orden global, "X" si aplica) —
-  // así la misma categoría siempre cae en la misma columna.
+  // Igual que en exportarExcel: Proyecto/Viaje siempre en las primeras columnas (en blanco si no
+  // tiene), Tipo de gasto después — nunca se mezclan en la misma celda.
   const catsProy = g => getCats(g).filter(c => esCatProyecto(c));
   const catsTipo = g => getCats(g).filter(c => !esCatProyecto(c));
-  const tipoCatsGlobal = state.categorias.filter(c => !esCatProyecto(c));
-  // Solo las categorías de Tipo de gasto que están usadas en estos resultados (si no, con
-  // muchas categorías el Excel queda interminable hacia la derecha). Proyecto/Viaje se exporta
-  // siempre, aunque quede vacía.
-  const tipoCats = tipoCatsGlobal.filter(c => sorted.some(g => catsTipo(g).includes(c)));
   const maxProy = Math.max(1, ...sorted.map(g=>catsProy(g).length));
+  const maxTipo = Math.max(1, ...sorted.map(g=>catsTipo(g).length));
   const catHeaders = [
     ...Array.from({length:maxProy},(_,i)=> maxProy<=1 ? "Categoría Proyecto/Viaje" : `Categoría Proyecto/Viaje ${i+1}`),
-    ...tipoCats.map(c => `Cat: ${c}`),
+    ...Array.from({length:maxTipo},(_,i)=> maxTipo<=1 ? "Categoría" : `Categoría ${i+1}`),
   ];
   const headers = ["Fecha","Empresa","Titular/Comercio","Descripción",...catHeaders,"Medio de pago","Subtipo","Moneda","Monto Total","Cant. Cuotas","Monto/Cuota","Nota","Pagado por","Hora","ID"];
   const rows = sorted.map(g=>{
     const proyCols = Array.from({length:maxProy},(_,i)=>catsProy(g)[i]||"");
-    const gTipo = catsTipo(g);
-    const tipoCols = tipoCats.map(c => gTipo.includes(c) ? "X" : "");
+    const tipoCols = Array.from({length:maxTipo},(_,i)=>catsTipo(g)[i]||"");
     return [g.fecha, g.empresa, g.titular||"", g.desc, ...proyCols, ...tipoCols, ...splitMedio(g), g.moneda||"ARS", g.monto, g.cantCuotas||"", g.montoCuota||"", g.nota||"", g.pagador||"", g.hora||"", String(g.id)];
   });
   const wb = new ExcelJS.Workbook();
@@ -2679,10 +2647,9 @@ async function exportarBusqueda() {
   const labelHoja = (state.busqueda||state.filtroBEmp||(state.filtroBCats&&state.filtroBCats.join("+"))||"busqueda").replace(/[^a-zA-Z0-9 áéíóúñÁÉÍÓÚÑ+]/g,"").trim().slice(0,28) || "Busqueda";
   const ws = wb.addWorksheet(labelHoja);
   ws.addRow(headers); rows.forEach(r=>ws.addRow(r));
-  const numCatCols = maxProy + tipoCats.length;
-  aplicarEstilosHoja(ws, rows, numCatCols, 0, true, maxProy);
+  aplicarEstilosHoja(ws, rows, maxProy+maxTipo, 0, true);
   const ranges = crearHojaListas(wb);
-  aplicarValidacionesHoja(ws, numCatCols, ranges, undefined, undefined, undefined, maxProy);
+  aplicarValidacionesHoja(ws, maxProy+maxTipo, ranges, undefined, undefined, undefined, maxProy);
   const buf = await wb.xlsx.writeBuffer();
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([buf], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
