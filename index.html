@@ -161,6 +161,7 @@ let state = {
   // form
   empresa: null, desc:"", titular:"", monto:"", moneda:defaultMoneda(), fecha:hoy(), hora:horaAhora(),
   medio:defaultMedio(), subMedio:null, categoriasSel:defaultCategoriaSel(), nota:"", cantCuotas:"", tcCuotas:false, pagador:null, gbpMode:false, gbpRate: (localStorage.getItem("gbp_rate_manual")?parseFloat(localStorage.getItem("gbp_rate")):0)||1.24,
+  cantidad:"", precioUnit:"", _cantPrecioAbierta:false,
   splitMode:false, splitParts:defaultSplitParts(),
   // ia
   empIA:null, textoLibre:"", iaLoading:false, iaResult:null,
@@ -1033,6 +1034,7 @@ function buildModalVerGasto() {
         ${g.titular?`<div style="font-size:13px;color:var(--muted);margin-top:2px">${esc(g.desc)}</div>`:""}
         <div style="font-family:monospace;font-size:22px;font-weight:700;color:${c.text};margin-top:10px">${fmtMonto(g.monto,g.moneda)}</div>
         ${g.montoCuota?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${g.cantCuotas} cuotas de ${fmtMonto(g.montoCuota,g.moneda)}</div>`:""}
+        ${g.cantidad&&g.precioUnit?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${g.cantidad} × ${fmtMonto(g.precioUnit,g.moneda)} c/u</div>`:""}
       </div>
       <div style="padding:0 4px">
         ${fila("Fecha", g.fecha?g.fecha.split("-").reverse().join("/"):"")}
@@ -1044,6 +1046,8 @@ function buildModalVerGasto() {
         ${g.moneda&&g.moneda!=="ARS"?fila("Moneda", g.moneda):""}
         ${g.cantCuotas?fila("Cantidad de cuotas", String(g.cantCuotas)):""}
         ${g.montoCuota?fila("Monto por cuota", fmtMonto(g.montoCuota,g.moneda)):""}
+        ${g.cantidad?fila("Cantidad", String(g.cantidad)):""}
+        ${g.precioUnit?fila("Precio unitario", fmtMonto(g.precioUnit,g.moneda)):""}
         ${g.nota?fila("Nota", esc(g.nota)):""}
       </div>
       <div style="display:flex;gap:8px;margin-top:16px">
@@ -1062,6 +1066,8 @@ function buildModalEditarGasto() {
   const eDesc = state._editDesc !== undefined ? state._editDesc : (g.desc||"");
   const eTitular = state._editTitular !== undefined ? state._editTitular : (g.titular||"");
   const eMonto = state._editMonto !== undefined ? state._editMonto : (g.monto||"");
+  const eCantidad = state._editCantidad !== undefined ? state._editCantidad : (g.cantidad||"");
+  const ePrecioUnit = state._editPrecioUnit !== undefined ? state._editPrecioUnit : (g.precioUnit||"");
   const eMoneda = state._editMoneda !== undefined ? state._editMoneda : (g.moneda||"ARS");
   const eFecha = state._editFecha !== undefined ? state._editFecha : (g.fecha||hoy());
   const eCats = state._editCats !== undefined ? state._editCats : getCats(g);
@@ -1087,9 +1093,10 @@ function buildModalEditarGasto() {
         ${buildCatMultiPicker(eCats,"toggleCatEdit")}
       </div>
       <div class="row2">
-        <div class="field"><span class="label">Monto</span><input type="number" value="${eMonto}" oninput="state._editMonto=this.value" step="0.01"></div>
+        <div class="field"><span class="label">Monto</span><input id="inp-edit-monto" type="number" value="${eMonto}" oninput="state._editMonto=this.value" step="0.01"></div>
         <div class="field"><span class="label">Moneda</span><select onchange="state._editMoneda=this.value">${monOpts}</select></div>
       </div>
+      ${buildCantPrecioCollapsable(eCantidad, ePrecioUnit, state._editCantPrecioAbierta, "abrirEditCantPrecio", "setEditCantidad", "setEditPrecioUnit")}
       ${g.splitGroupId ? buildSplitLinkedInfo(g) : ""}
       <div class="row2"><div class="field"><span class="label">Fecha</span><input type="date" value="${eFecha}" onchange="state._editFecha=this.value"></div><div class="field"><span class="label">Hora</span>${buildHoraSel(state._editHora!==undefined?state._editHora:(g.hora||""),"setEditHora")}</div></div>
       <div class="field"><span class="label">Medio de pago</span>${buildMedioPicker(m,sm,"setEditMedio","setEditSubMedio")}</div>
@@ -1142,6 +1149,7 @@ function buildCargar() {
         </select>
       </div>
     </div>
+    ${buildCantPrecioCollapsable(state.cantidad, state.precioUnit, state._cantPrecioAbierta, "abrirCantPrecio", "setCantidad", "setPrecioUnit")}
     ${enModoGBP()&&state.moneda==="Euros"?`<div class="field" style="margin-top:-6px"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <button onclick="setState({gbpMode:!state.gbpMode})" style="padding:7px 12px;border-radius:8px;border:1px solid ${state.gbpMode?"var(--accent)":"var(--border)"};background:${state.gbpMode?"rgba(245,158,11,.12)":"transparent"};color:${state.gbpMode?"var(--accent)":"var(--muted)"};font-size:12px;cursor:pointer">${state.gbpMode?"✓ ":""}Monto en £ → guardar en €</button>
       <input type="number" step="0.0001" value="${state.gbpRate}" oninput="setGbpRate(this.value)" title="Tipo de cambio £ a €" style="width:80px;padding:7px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--fg);font-size:12px">
@@ -1167,6 +1175,8 @@ function buildIA() {
     const r = state.iaResult;
     const eD = state._iaDesc!==undefined?state._iaDesc:(r.desc||"");
     const eM = state._iaMonto!==undefined?state._iaMonto:(r.monto||"");
+    const eCantidad = state._iaCantidad!==undefined?state._iaCantidad:"";
+    const ePrecioUnit = state._iaPrecioUnit!==undefined?state._iaPrecioUnit:"";
     const eMon = state._iaMoneda!==undefined?state._iaMoneda:(r.moneda||defaultMoneda());
     const eF = state._iaFecha!==undefined?state._iaFecha:(r.fecha||hoy());
     const eMed = state._iaMedio!==undefined?state._iaMedio:(r.medio||defaultMedio());
@@ -1188,9 +1198,10 @@ function buildIA() {
         ${buildCatMultiPicker(eCats,"toggleCatIA")}
       </div>
       <div class="row2 field">
-        <div><span class="label">Monto</span><input type="number" value="${eM}" oninput="state._iaMonto=this.value" step="0.01"></div>
+        <div><span class="label">Monto</span><input id="inp-ia-monto" type="number" value="${eM}" oninput="state._iaMonto=this.value" step="0.01"></div>
         <div><span class="label">Moneda</span><select onchange="state._iaMoneda=this.value">${monOpts}</select></div>
       </div>
+      ${buildCantPrecioCollapsable(eCantidad, ePrecioUnit, state._iaCantPrecioAbierta, "abrirIACantPrecio", "setIACantidad", "setIAPrecioUnit")}
       ${enModoGBP()&&eMon==="Euros"?`<div class="field" style="margin-top:-6px"><button onclick="setIAGbp()" style="padding:7px 12px;border-radius:8px;border:1px solid ${(state._iaGbp!==undefined?state._iaGbp:false)?"var(--accent)":"var(--border)"};background:${(state._iaGbp!==undefined?state._iaGbp:false)?"rgba(245,158,11,.12)":"transparent"};color:${(state._iaGbp!==undefined?state._iaGbp:false)?"var(--accent)":"var(--muted)"};font-size:12px;cursor:pointer">${(state._iaGbp!==undefined?state._iaGbp:false)?"✓ ":""}Monto en £ → guardar en € (TC ${state.gbpRate})</button></div>`:""}
       <div class="row2 field"><div><span class="label">Fecha</span><input type="date" value="${eF}" onchange="state._iaFecha=this.value"></div><div><span class="label">Hora</span>${buildHoraSel(state._iaHora!==undefined?state._iaHora:horaAhora(),"setIAHora")}</div></div>
       <div class="field"><span class="label">Medio de pago</span>${buildMedioPicker(eMed,eSub,"setIAMedio","setIASubMedio")}</div>
@@ -1851,6 +1862,40 @@ function buildNotaCollapsable(valor, abierto, abrirFn, oninputExpr) {
   }
   return `<div class="field"><span class="label">Nota <span style="color:var(--muted);font-weight:400;text-transform:none">(opcional)</span></span><input value="${esc(valor)}" oninput="${oninputExpr}" placeholder="Aclaración..."></div>`;
 }
+
+// Cantidad × Precio unitario: completa el Monto Total solo (cantidad×precio), pero sigue siendo
+// editable a mano por si hace falta ajustarlo (ej. descuento). Útil cuando un gasto son varias
+// unidades de un mismo producto. No se aplica en actualizaciones por ID al reimportar Excel — se
+// trata igual que monto/cuotas, para no arriesgar pisar valores por un error de tipeo en una
+// edición masiva.
+function abrirCantPrecio() { state._cantPrecioAbierta=true; render(); }
+function abrirIACantPrecio() { state._iaCantPrecioAbierta=true; render(); }
+function abrirEditCantPrecio() { state._editCantPrecioAbierta=true; render(); }
+function buildCantPrecioCollapsable(cantidad, precioUnit, abierto, abrirFn, setCantFn, setPrecioFn) {
+  if (!cantidad && !precioUnit && !abierto) {
+    return `<div class="field"><button onclick="${abrirFn}()" style="background:none;border:none;color:var(--muted);font-size:12px;text-decoration:underline;cursor:pointer;padding:0">+ Cantidad × precio unitario</button></div>`;
+  }
+  return `<div class="row2 field">
+    <div><span class="label">Cantidad <span style="color:var(--muted);font-weight:400;text-transform:none">(opcional)</span></span><input type="number" min="0" step="0.01" value="${cantidad}" oninput="${setCantFn}(this.value)" placeholder="Ej: 3"></div>
+    <div><span class="label">Precio unitario</span><input type="number" min="0" step="0.01" value="${precioUnit}" oninput="${setPrecioFn}(this.value)" placeholder="Ej: 1500"></div>
+  </div>`;
+}
+function _recalcMonto(cantidad, precioUnit, montoElId) {
+  const c = parseFloat(cantidad), p = parseFloat(precioUnit);
+  if (c > 0 && p > 0) {
+    const monto = String(Math.round(c*p*100)/100);
+    const el = document.getElementById(montoElId);
+    if (el) el.value = monto;
+    return monto;
+  }
+  return null;
+}
+function setCantidad(v) { state.cantidad = v; const m = _recalcMonto(v, state.precioUnit, "inp-monto"); if (m!==null) { state.monto = m; updateGbpPreview(); } }
+function setPrecioUnit(v) { state.precioUnit = v; const m = _recalcMonto(state.cantidad, v, "inp-monto"); if (m!==null) { state.monto = m; updateGbpPreview(); } }
+function setIACantidad(v) { state._iaCantidad = v; const m = _recalcMonto(v, state._iaPrecioUnit, "inp-ia-monto"); if (m!==null) state._iaMonto = m; }
+function setIAPrecioUnit(v) { state._iaPrecioUnit = v; const m = _recalcMonto(state._iaCantidad, v, "inp-ia-monto"); if (m!==null) state._iaMonto = m; }
+function setEditCantidad(v) { state._editCantidad = v; const m = _recalcMonto(v, state._editPrecioUnit, "inp-edit-monto"); if (m!==null) state._editMonto = m; }
+function setEditPrecioUnit(v) { state._editPrecioUnit = v; const m = _recalcMonto(state._editCantidad, v, "inp-edit-monto"); if (m!==null) state._editMonto = m; }
 function updateSplit(i,field,val) { const p=[...state.splitParts]; p[i]={...p[i],[field]:val}; setState({splitParts:p}); }
 function updateSplitPct(i,val) { state.splitParts[i]={...state.splitParts[i],pct:val}; updateSplitTotalDisplay('split-total-cargar', state.splitParts); }
 function addSplit() { setState({splitParts:[...state.splitParts,{empresa:null,pct:0}]}); }
@@ -1878,7 +1923,9 @@ function agregarGasto() {
   }
   const _cantCuotas = esCuotasMode(state.medio,state.tcCuotas)&&parseInt(state.cantCuotas)>0?parseInt(state.cantCuotas):null;
   const _montoCuota = _cantCuotas&&_monto>0?Math.round(_monto/_cantCuotas*100)/100:null;
-  const base = {desc,titular:state.titular.trim(),monto:_monto,moneda:state.moneda,fecha:state.fecha,hora:state.hora||null,medio:medioStr(state.medio,state.subMedio)||"No especificado",categorias:(state.categoriasSel&&state.categoriasSel.length)?state.categoriasSel:["Sin categoría"],nota:(_notaGbp?(state.nota.trim()?state.nota.trim()+" · ":"")+_notaGbp:state.nota.trim()),cantCuotas:_cantCuotas,montoCuota:_montoCuota,pagador:state.pagador||null,updatedAt:Date.now()};
+  const _cantidad = parseFloat(state.cantidad)>0?parseFloat(state.cantidad):null;
+  const _precioUnit = parseFloat(state.precioUnit)>0?parseFloat(state.precioUnit):null;
+  const base = {desc,titular:state.titular.trim(),monto:_monto,moneda:state.moneda,fecha:state.fecha,hora:state.hora||null,medio:medioStr(state.medio,state.subMedio)||"No especificado",categorias:(state.categoriasSel&&state.categoriasSel.length)?state.categoriasSel:["Sin categoría"],nota:(_notaGbp?(state.nota.trim()?state.nota.trim()+" · ":"")+_notaGbp:state.nota.trim()),cantCuotas:_cantCuotas,montoCuota:_montoCuota,cantidad:_cantidad,precioUnit:_precioUnit,pagador:state.pagador||null,updatedAt:Date.now()};
   if(state.splitMode) {
     if(splitSum(state.splitParts)!==100) return showToast("⚠ Los % deben sumar 100");
     if(state.splitParts.some(p=>!p.empresa)) return showToast("⚠ Asigná empresa a cada parte");
@@ -1892,7 +1939,7 @@ function agregarGasto() {
     showToast("✓ Gasto agregado");
   }
   saveAll();
-  setState({desc:"",titular:"",monto:"",fecha:hoy(),hora:horaAhora(),nota:"",categoriasSel:defaultCategoriaSel(),medio:defaultMedio(),subMedio:null,empresa:null,moneda:defaultMoneda(),cantCuotas:"",tcCuotas:false,pagador:null,_pagadorAbierto:false,_notaAbierta:false});
+  setState({desc:"",titular:"",monto:"",fecha:hoy(),hora:horaAhora(),nota:"",categoriasSel:defaultCategoriaSel(),medio:defaultMedio(),subMedio:null,empresa:null,moneda:defaultMoneda(),cantCuotas:"",tcCuotas:false,pagador:null,_pagadorAbierto:false,_notaAbierta:false,cantidad:"",precioUnit:"",_cantPrecioAbierta:false});
 }
 
 function eliminarGasto(id) {
@@ -2042,7 +2089,7 @@ function toggleCatIA(i){
 }
 function setIASubMedio(s){state._iaSubMedio=s;render();}
 function cancelarIA(){
-  ["_iaDesc","_iaTitular","_iaMonto","_iaMoneda","_iaFecha","_iaMedio","_iaSubMedio","_iaCats","_iaNota","_iaNotaAbierta","_iaTcCuotas","_iaCantCuotas","_iaPagador","_iaPagadorAbierto","_iaGbp","_iaHora"].forEach(k=>delete state[k]);
+  ["_iaDesc","_iaTitular","_iaMonto","_iaMoneda","_iaFecha","_iaMedio","_iaSubMedio","_iaCats","_iaNota","_iaNotaAbierta","_iaTcCuotas","_iaCantCuotas","_iaPagador","_iaPagadorAbierto","_iaGbp","_iaHora","_iaCantidad","_iaPrecioUnit","_iaCantPrecioAbierta"].forEach(k=>delete state[k]);
   setState({iaResult:null});
 }
 function confirmarIA() {
@@ -2064,6 +2111,8 @@ function confirmarIA() {
     pagador: state._iaPagador!==undefined?state._iaPagador:null,
     cantCuotas:(()=>{const mIA=state._iaMedio!==undefined?state._iaMedio:(r.medio||null);const tcCuotasIA=state._iaTcCuotas!==undefined?state._iaTcCuotas:false;if(!esCuotasMode(mIA,tcCuotasIA))return null;const c=parseInt(state._iaCantCuotas);return c>0?c:null;})(),
     montoCuota:(()=>{const mIA=state._iaMedio!==undefined?state._iaMedio:(r.medio||null);const tcCuotasIA=state._iaTcCuotas!==undefined?state._iaTcCuotas:false;if(!esCuotasMode(mIA,tcCuotasIA))return null;const c=parseInt(state._iaCantCuotas);const mt=parseFloat(state._iaMonto!==undefined?state._iaMonto:r.monto);return(c>0&&mt>0)?Math.round(mt/c*100)/100:null;})(),
+    cantidad: parseFloat(state._iaCantidad)>0?parseFloat(state._iaCantidad):null,
+    precioUnit: parseFloat(state._iaPrecioUnit)>0?parseFloat(state._iaPrecioUnit):null,
     updatedAt: Date.now(),
   };
   if (enModoGBP() && (state._iaGbp!==undefined?state._iaGbp:false) && base.moneda==="Euros" && base.monto>0) {
@@ -2085,7 +2134,7 @@ function confirmarIA() {
     showToast("✓ Gasto agregado");
   }
   saveAll();
-  ["_iaDesc","_iaTitular","_iaMonto","_iaMoneda","_iaFecha","_iaMedio","_iaSubMedio","_iaCats","_iaNota","_iaNotaAbierta","_iaTcCuotas","_iaCantCuotas","_iaPagador","_iaPagadorAbierto","_iaGbp","_iaHora"].forEach(k=>delete state[k]);
+  ["_iaDesc","_iaTitular","_iaMonto","_iaMoneda","_iaFecha","_iaMedio","_iaSubMedio","_iaCats","_iaNota","_iaNotaAbierta","_iaTcCuotas","_iaCantCuotas","_iaPagador","_iaPagadorAbierto","_iaGbp","_iaHora","_iaCantidad","_iaPrecioUnit","_iaCantPrecioAbierta"].forEach(k=>delete state[k]);
   setState({iaResult:null,imgB64:null,imgPreview:null,textoLibre:""});
 }
 
@@ -2108,7 +2157,7 @@ function editarGasto(id) {
   else { console.warn("editarGasto: no se encontró id="+id, state.gastos.map(x=>x.id)); }
 }
 function clearEditState() {
-  ["_editDesc","_editTitular","_editMonto","_editMoneda","_editFecha","_editMedio","_editSubMedio","_editCats","_editNota","_editNotaAbierta","_editEmpresa","_editCantCuotas","_editTcCuotas","_editPagador","_editPagadorAbierto","_editHora"].forEach(k=>delete state[k]);
+  ["_editDesc","_editTitular","_editMonto","_editMoneda","_editFecha","_editMedio","_editSubMedio","_editCats","_editNota","_editNotaAbierta","_editEmpresa","_editCantCuotas","_editTcCuotas","_editPagador","_editPagadorAbierto","_editHora","_editCantidad","_editPrecioUnit","_editCantPrecioAbierta"].forEach(k=>delete state[k]);
 }
 function toggleCatEdit(i) {
   const c = state.categorias[i];
@@ -2172,6 +2221,8 @@ function guardarEdicion() {
     pagador: state._editPagador!==undefined?state._editPagador:(g.pagador||null),
     cantCuotas:(()=>{const mE=state._editMedio!==undefined?state._editMedio:(g.medio||"").split(" · ")[0]||null;const tcCuotasEdit=state._editTcCuotas!==undefined?state._editTcCuotas:!!(g.cantCuotas&&esTCMedio(mE));if(!esCuotasMode(mE,tcCuotasEdit))return null;const c=parseInt(state._editCantCuotas!==undefined?state._editCantCuotas:g.cantCuotas);return c>0?c:null;})(),
     montoCuota:(()=>{const mE=state._editMedio!==undefined?state._editMedio:(g.medio||"").split(" · ")[0]||null;const tcCuotasEdit=state._editTcCuotas!==undefined?state._editTcCuotas:!!(g.cantCuotas&&esTCMedio(mE));if(!esCuotasMode(mE,tcCuotasEdit))return null;const c=parseInt(state._editCantCuotas!==undefined?state._editCantCuotas:g.cantCuotas);const mt=parseFloat(state._editMonto!==undefined?state._editMonto:g.monto);return(c>0&&mt>0)?Math.round(mt/c*100)/100:null;})(),
+    cantidad: (()=>{const v=parseFloat(state._editCantidad!==undefined?state._editCantidad:g.cantidad);return v>0?v:null;})(),
+    precioUnit: (()=>{const v=parseFloat(state._editPrecioUnit!==undefined?state._editPrecioUnit:g.precioUnit);return v>0?v:null;})(),
     updatedAt: Date.now(),
   };
   state.gastos = state.gastos.map(x=>x.id===g.id?updated:x);
@@ -2192,8 +2243,9 @@ function aplicarEstilosHoja(ws, rows, numCatCols, extraCols, hasId) {
   const off = extraCols || 0;                 // columnas extra insertadas después de "Empresa"
   const colMonedaIdx0 = 6 + numCatCols + off; // índice 0-based dentro del array de la fila
   const colMontoTotal1 = 8 + numCatCols + off;  // columna 1-based de Excel
-  const colMontoCuota1 = 10 + numCatCols + off; // columna 1-based de Excel
-  const totalCols = 13 + numCatCols + off;
+  const colPrecioUnit1 = 10 + numCatCols + off; // columna 1-based de Excel ("Precio Unitario")
+  const colMontoCuota1 = 12 + numCatCols + off; // columna 1-based de Excel (se corrió +2 por Cantidad/Precio Unitario)
+  const totalCols = 15 + numCatCols + off;
 
   const HEADER_FILL = { type:"pattern", pattern:"solid", fgColor:{argb:"FF1E3A5F"} };
   const HEADER_FONT = { name:"Arial", bold:true, color:{argb:"FFFFFFFF"}, size:10 };
@@ -2222,7 +2274,7 @@ function aplicarEstilosHoja(ws, rows, numCatCols, extraCols, hasId) {
         const d = new Date(cell.value + "T00:00:00");
         if (!isNaN(d)) { cell.value = d; cell.numFmt = "dd/mm/yyyy"; }
       }
-      if ((colIdx === colMontoTotal1 || colIdx === colMontoCuota1) && typeof cell.value === "number") {
+      if ((colIdx === colMontoTotal1 || colIdx === colPrecioUnit1 || colIdx === colMontoCuota1) && typeof cell.value === "number") {
         cell.numFmt = fmtMonedaExcel(moneda);
         cell.alignment = { vertical:"middle", horizontal:"right" };
       }
@@ -2230,7 +2282,7 @@ function aplicarEstilosHoja(ws, rows, numCatCols, extraCols, hasId) {
     exRow.height = 18;
   });
 
-  const widths = [12,12, ...Array(off).fill(10), 24,32, ...Array(numCatCols).fill(18), 16,16,8,14,10,14,28,12,8];
+  const widths = [12,12, ...Array(off).fill(10), 24,32, ...Array(numCatCols).fill(18), 16,16,8,14,10,12,10,14,28,12,8];
   widths.forEach((w,i) => { ws.getColumn(i+1).width = w; });
   ws.views = [{ state:"frozen", ySplit:1 }];
   ws.autoFilter = { from:{row:1,column:1}, to:{row:1,column:totalCols} };
@@ -2309,7 +2361,7 @@ function aplicarValidacionesHoja(ws, numCatCols, ranges, maxFilas, extraCols, em
   ws.dataValidations.add(`${colMedio}2:${colMedio}${maxFilas}`, dv(ranges.medioRange));
   ws.dataValidations.add(`${colSubtipo}2:${colSubtipo}${maxFilas}`, dv(ranges.subtipoRange));
   ws.dataValidations.add(`${colMoneda}2:${colMoneda}${maxFilas}`, dv(ranges.monedaRange));
-  const colPagador = colLetter(12+numCatCols+off);
+  const colPagador = colLetter(14+numCatCols+off);
   ws.dataValidations.add(`${colPagador}2:${colPagador}${maxFilas}`, dv(ranges.empresaRange));
 }
 
@@ -2384,7 +2436,12 @@ async function handleImportExcel(input) {
         const empresaRaw = String(get(row,"empresa")||"").trim();
         const isSplit = empresaRaw.toLowerCase() === "split";
         const empresa = isSplit ? null : EMPRESAS.find(e => e.toLowerCase() === empresaRaw.toLowerCase());
-        const monto = parseFloat(get(row,"monto total"));
+        const cantidadVal = parseFloat(get(row,"cantidad"));
+        const precioUnitVal = parseFloat(get(row,"precio unitario"));
+        let monto = parseFloat(get(row,"monto total"));
+        // Si no hay Monto Total pero sí Cantidad + Precio Unitario, se calcula solo (mismo criterio
+        // que al cargar desde la app).
+        if ((!monto || monto<=0) && cantidadVal>0 && precioUnitVal>0) monto = Math.round(cantidadVal*precioUnitVal*100)/100;
         const fecha = parseFechaImport(get(row,"fecha"));
 
         if (!isSplit && !empresa) { errores.push(`Hoja "${ws.name}" fila ${r}: empresa "${empresaRaw}" no reconocida`); continue; }
@@ -2465,6 +2522,8 @@ async function handleImportExcel(input) {
               moneda, monto: montoParte,
               cantCuotas: cantCuotasParte,
               montoCuota: montoCuotaParte,
+              cantidad: cantidadVal>0?cantidadVal:null,
+              precioUnit: precioUnitVal>0?precioUnitVal:null,
               nota: `${nota?nota+" · ":""}División ${p.pct}%`,
               pagador,
               hora,
@@ -2484,6 +2543,8 @@ async function handleImportExcel(input) {
             moneda, monto,
             cantCuotas: cantCuotas>0?cantCuotas:null,
             montoCuota: montoCuota>0?montoCuota:null,
+            cantidad: cantidadVal>0?cantidadVal:null,
+            precioUnit: precioUnitVal>0?precioUnitVal:null,
             nota,
             pagador,
             hora,
@@ -2572,7 +2633,7 @@ async function descargarPlantillaExcel() {
   wb.creator = "Gastos App"; wb.created = new Date();
   const numCat = 3;
   const catHeaders = Array.from({length:numCat},(_,i)=>`Categoría ${i+1}`);
-  const headers = ["Fecha","Empresa","Split %","Titular/Comercio","Descripción",...catHeaders,"Medio de pago","Subtipo","Moneda","Monto Total","Cant. Cuotas","Monto/Cuota","Nota","Pagado por","Hora"];
+  const headers = ["Fecha","Empresa","Split %","Titular/Comercio","Descripción",...catHeaders,"Medio de pago","Subtipo","Moneda","Monto Total","Cantidad","Precio Unitario","Cant. Cuotas","Monto/Cuota","Nota","Pagado por","Hora"];
   const ws = wb.addWorksheet("Plantilla");
   ws.addRow(headers);
   aplicarEstilosHoja(ws, [], numCat, 1);
@@ -2610,11 +2671,11 @@ async function exportarExcel(soloEmp) {
     ...Array.from({length:mp},(_,i)=> mp<=1 ? "Categoría Proyecto/Viaje" : `Categoría Proyecto/Viaje ${i+1}`),
     ...Array.from({length:mt},(_,i)=> mt<=1 ? "Categoría" : `Categoría ${i+1}`),
   ];
-  const buildHeaders = (mp,mt) => ["Fecha","Empresa","Titular/Comercio","Descripción",...catHeaders(mp,mt),"Medio de pago","Subtipo","Moneda","Monto Total","Cant. Cuotas","Monto/Cuota","Nota","Pagado por","Hora","ID"];
+  const buildHeaders = (mp,mt) => ["Fecha","Empresa","Titular/Comercio","Descripción",...catHeaders(mp,mt),"Medio de pago","Subtipo","Moneda","Monto Total","Cantidad","Precio Unitario","Cant. Cuotas","Monto/Cuota","Nota","Pagado por","Hora","ID"];
   const toRow = (g,mp,mt) => {
     const proyCols = Array.from({length:mp},(_,i)=>catsProy(g)[i]||"");
     const tipoCols = Array.from({length:mt},(_,i)=>catsTipo(g)[i]||"");
-    return [g.fecha, g.empresa, g.titular||"", g.desc, ...proyCols, ...tipoCols, ...splitMedio(g), g.moneda||"ARS", g.monto, g.cantCuotas||"", g.montoCuota||"", g.nota||"", g.pagador||"", g.hora||"", String(g.id)];
+    return [g.fecha, g.empresa, g.titular||"", g.desc, ...proyCols, ...tipoCols, ...splitMedio(g), g.moneda||"ARS", g.monto, g.cantidad||"", g.precioUnit||"", g.cantCuotas||"", g.montoCuota||"", g.nota||"", g.pagador||"", g.hora||"", String(g.id)];
   };
 
   const descargar = async (nombre) => {
@@ -2680,11 +2741,11 @@ async function exportarBusqueda() {
     ...Array.from({length:maxProy},(_,i)=> maxProy<=1 ? "Categoría Proyecto/Viaje" : `Categoría Proyecto/Viaje ${i+1}`),
     ...Array.from({length:maxTipo},(_,i)=> maxTipo<=1 ? "Categoría" : `Categoría ${i+1}`),
   ];
-  const headers = ["Fecha","Empresa","Titular/Comercio","Descripción",...catHeaders,"Medio de pago","Subtipo","Moneda","Monto Total","Cant. Cuotas","Monto/Cuota","Nota","Pagado por","Hora","ID"];
+  const headers = ["Fecha","Empresa","Titular/Comercio","Descripción",...catHeaders,"Medio de pago","Subtipo","Moneda","Monto Total","Cantidad","Precio Unitario","Cant. Cuotas","Monto/Cuota","Nota","Pagado por","Hora","ID"];
   const rows = sorted.map(g=>{
     const proyCols = Array.from({length:maxProy},(_,i)=>catsProy(g)[i]||"");
     const tipoCols = Array.from({length:maxTipo},(_,i)=>catsTipo(g)[i]||"");
-    return [g.fecha, g.empresa, g.titular||"", g.desc, ...proyCols, ...tipoCols, ...splitMedio(g), g.moneda||"ARS", g.monto, g.cantCuotas||"", g.montoCuota||"", g.nota||"", g.pagador||"", g.hora||"", String(g.id)];
+    return [g.fecha, g.empresa, g.titular||"", g.desc, ...proyCols, ...tipoCols, ...splitMedio(g), g.moneda||"ARS", g.monto, g.cantidad||"", g.precioUnit||"", g.cantCuotas||"", g.montoCuota||"", g.nota||"", g.pagador||"", g.hora||"", String(g.id)];
   });
   const wb = new ExcelJS.Workbook();
   wb.creator = "Gastos App"; wb.created = new Date();
