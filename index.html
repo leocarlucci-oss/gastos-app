@@ -120,7 +120,7 @@ const CATEGORIAS_DEFAULT = ["Combustible","Alimentación","Equipamiento","Manten
 
 const MEDIOS = {
   Tx:       {color:"#38BDF8",sub:["Santander BW","Santander NF","Santander LC","Galicia C2","Galicia BW","Galicia LC","Supervielle C2","Supervielle LC","BBVA AK","BBVA LC","CIU AK","CIU BW","CIU NF","Macro LC"]},
-  "TC ARS": {color:"#A78BFA",sub:["Mastercard Supervielle Leandro","Mastercard BBVA Leandro","Mastercard Ciudad Mama","AMEX Leandro","Visa Santander Leandro","Visa BBVA Leandro","Visa BBVA Mama","Mastercard BBVA Mamá","Visa Ciudad Mama","AMEX Santander Leandro","Mastercard Ciudad Leandro","Mercadopago Master","VISA MACRO","AMEX MACRO","Visa Supervielle Leandro","Mastercard Cencosud Leandro","Visa GALICIA","MC Galicia"]},
+  "TC ARS": {color:"#A78BFA",sub:["MC Supervielle","MC BBVA Leandro","MC Ciudad Mama","AMEX Leandro","Visa Santander Leandro","Visa BBVA Leandro","Visa BBVA Mama","MC BBVA Mamá","Visa Ciudad Mama","AMEX Santander","MC Ciudad Leandro","Mercadopago Master","VISA MACRO","AMEX MACRO","Visa Supervielle Leandro","MC Cencosud Leandro","Visa GALICIA","MC Galicia"]},
   "TC U$S": {color:"#34D399",sub:["Visa Chase","MC Citi"]},
   "TC EUR": {color:"#FCD34D",sub:["Santander débito","Caixabank débito"]},
   Cash:     {color:"#FB923C",sub:["ARS","U$S","Euros","CLP"]},
@@ -240,6 +240,40 @@ function migrarCatJetsmartTraslados() {
     showToast(`✓ "${CAT}" agregada a ${count} gasto${count>1?"s":""} de Jetsmart Airlines`);
   } else {
     saveAll();
+  }
+}
+
+// Migración one-off: renombra sub-medios de tarjeta guardados en gastos viejos
+// (Mastercard -> MC; saca "Leandro" de MC Supervielle y AMEX Santander)
+function migrarNombresSubMedio() {
+  const FLAG = "migrated_submedio_names_v1";
+  if (localStorage.getItem(FLAG)) return;
+  const RENOMBRES = {
+    "Mastercard Supervielle Leandro": "MC Supervielle",
+    "Mastercard BBVA Leandro": "MC BBVA Leandro",
+    "Mastercard Ciudad Mama": "MC Ciudad Mama",
+    "Mastercard BBVA Mamá": "MC BBVA Mamá",
+    "Mastercard Ciudad Leandro": "MC Ciudad Leandro",
+    "Mastercard Cencosud Leandro": "MC Cencosud Leandro",
+    "AMEX Santander Leandro": "AMEX Santander",
+  };
+  let count = 0;
+  state.gastos = state.gastos.map(g => {
+    if (!g.medio) return g;
+    for (const [oldName, newName] of Object.entries(RENOMBRES)) {
+      const suf = ` · ${oldName}`;
+      if (g.medio.endsWith(suf)) {
+        count++;
+        return {...g, medio: g.medio.slice(0, -suf.length) + ` · ${newName}`, updatedAt: Date.now()};
+      }
+    }
+    return g;
+  });
+  localStorage.setItem(FLAG, "1");
+  if (count > 0) {
+    saveAll();
+    render();
+    showToast(`✓ Sub-medio de tarjeta actualizado en ${count} gasto${count>1?"s":""}`);
   }
 }
 
@@ -2773,7 +2807,7 @@ if ("serviceWorker" in navigator) {
 }
 handleOAuthCallback();
 render();
-if (driveEnabled()) { loadFromDrive().then(migrarCatJetsmartTraslados).then(normalizarCasingCategorias).then(normalizarCategoriasDeGastos); } else { migrarCatJetsmartTraslados(); normalizarCasingCategorias(); normalizarCategoriasDeGastos(); }
+if (driveEnabled()) { loadFromDrive().then(migrarCatJetsmartTraslados).then(normalizarCasingCategorias).then(normalizarCategoriasDeGastos).then(migrarNombresSubMedio); } else { migrarCatJetsmartTraslados(); normalizarCasingCategorias(); normalizarCategoriasDeGastos(); migrarNombresSubMedio(); }
 // Sync periódico cada 2 minutos si hay conexión activa con Drive
 setInterval(() => {
   if (refrescarFechaSiCorresponde()) render();
