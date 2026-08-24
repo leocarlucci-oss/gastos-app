@@ -120,7 +120,7 @@ const CATEGORIAS_DEFAULT = ["Combustible","Alimentación","Equipamiento","Manten
 
 const MEDIOS = {
   Tx:       {color:"#38BDF8",sub:["Santander BW","Santander NF","Santander LC","Galicia C2","Galicia BW","Galicia LC","Supervielle C2","Supervielle LC","BBVA AK","BBVA LC","CIU AK","CIU BW","CIU NF","Macro LC"]},
-  "TC ARS": {color:"#A78BFA",sub:["MC Supervielle","MC BBVA Leandro","MC Ciudad Mama","AMEX Leandro","Visa Santander Leandro","Visa BBVA Leandro","Visa BBVA Mama","MC BBVA Mamá","Visa Ciudad Mama","AMEX Santander","MC Ciudad Leandro","Mercadopago Master","VISA MACRO","AMEX MACRO","Visa Supervielle Leandro","MC Cencosud Leandro","Visa GALICIA","MC Galicia"]},
+  "TC ARS": {color:"#A78BFA",sub:["MC Supervielle","MC BBVA Leandro","MC Ciudad Mama","AMEX Leandro","Visa Santander","Visa BBVA Leandro","Visa BBVA Mama","MC BBVA Mamá","Visa Ciudad Mama","AMEX Santander","MC Ciudad Leandro","MC Mercadopago","VISA MACRO","AMEX MACRO","Visa Supervielle","MC Cencopay Leandro","Visa GALICIA","MC Galicia"]},
   "TC U$S": {color:"#34D399",sub:["Visa Chase","MC Citi"]},
   "TC EUR": {color:"#FCD34D",sub:["Santander débito","Caixabank débito"]},
   Cash:     {color:"#FB923C",sub:["ARS","U$S","Euros","CLP"]},
@@ -244,9 +244,8 @@ function migrarCatJetsmartTraslados() {
 }
 
 // Migración one-off: renombra sub-medios de tarjeta guardados en gastos viejos
-// (Mastercard -> MC; saca "Leandro" de MC Supervielle y AMEX Santander)
 function migrarNombresSubMedio() {
-  const FLAG = "migrated_submedio_names_v1";
+  const FLAG = "migrated_submedio_names_v2";
   if (localStorage.getItem(FLAG)) return;
   const RENOMBRES = {
     "Mastercard Supervielle Leandro": "MC Supervielle",
@@ -254,8 +253,12 @@ function migrarNombresSubMedio() {
     "Mastercard Ciudad Mama": "MC Ciudad Mama",
     "Mastercard BBVA Mamá": "MC BBVA Mamá",
     "Mastercard Ciudad Leandro": "MC Ciudad Leandro",
-    "Mastercard Cencosud Leandro": "MC Cencosud Leandro",
+    "Mastercard Cencosud Leandro": "MC Cencopay Leandro",
+    "MC Cencosud Leandro": "MC Cencopay Leandro",
     "AMEX Santander Leandro": "AMEX Santander",
+    "Mercadopago Master": "MC Mercadopago",
+    "Visa Santander Leandro": "Visa Santander",
+    "Visa Supervielle Leandro": "Visa Supervielle",
   };
   let count = 0;
   state.gastos = state.gastos.map(g => {
