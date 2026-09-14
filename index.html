@@ -1860,10 +1860,15 @@ function limpiarFiltrosBusqueda() {
 }
 function cargarMasGastos() { setState({listPage: state.listPage + 1}); }
 function setEmpresa(e) { setState({empresa:e}); }
+const CATS_MONEDA_USD = ["Usa","Mia Set26"];
 function toggleCatCargar(i) {
   const c = state.categorias[i];
   const sel = state.categoriasSel || [];
-  state.categoriasSel = sel.includes(c) ? sel.filter(x=>x!==c) : [...sel, c];
+  const agregando = !sel.includes(c);
+  state.categoriasSel = agregando ? [...sel, c] : sel.filter(x=>x!==c);
+  if (agregando && CATS_MONEDA_USD.includes(c)) {
+    state.moneda = "U$S"; state.medio = "TC U$S"; state.subMedio = null; state.tcCuotas = false; state.cantCuotas = "";
+  }
   render();
 }
 function setEmpIA(e) { setState({empIA:e}); }
@@ -2121,7 +2126,11 @@ function setIAMedio(m){state._iaMedio=m;state._iaSubMedio=null;state._iaTcCuotas
 function toggleCatIA(i){
   const c = state.categorias[i];
   const sel = state._iaCats!==undefined?state._iaCats:(state.iaResult&&state.iaResult.categoria?[state.iaResult.categoria]:defaultCategoriaSel());
-  state._iaCats = sel.includes(c) ? sel.filter(x=>x!==c) : [...sel, c];
+  const agregando = !sel.includes(c);
+  state._iaCats = agregando ? [...sel, c] : sel.filter(x=>x!==c);
+  if (agregando && CATS_MONEDA_USD.includes(c)) {
+    state._iaMoneda = "U$S"; state._iaMedio = "TC U$S"; state._iaSubMedio = null; state._iaTcCuotas = false; state._iaCantCuotas = "";
+  }
   render();
 }
 function setIASubMedio(s){state._iaSubMedio=s;render();}
@@ -2199,7 +2208,11 @@ function clearEditState() {
 function toggleCatEdit(i) {
   const c = state.categorias[i];
   const sel = state._editCats !== undefined ? state._editCats : getCats(state.gastoEditando||{});
-  state._editCats = sel.includes(c) ? sel.filter(x=>x!==c) : [...sel, c];
+  const agregando = !sel.includes(c);
+  state._editCats = agregando ? [...sel, c] : sel.filter(x=>x!==c);
+  if (agregando && CATS_MONEDA_USD.includes(c)) {
+    state._editMoneda = "U$S"; state._editMedio = "TC U$S"; state._editSubMedio = null; state._editTcCuotas = false; state._editCantCuotas = "";
+  }
   render();
 }
 function cerrarEditarGasto() { clearEditState(); setState({gastoEditando:null}); }
